@@ -1,0 +1,38 @@
+(kicad_sch (version 20250114) (generator "codex") (generator_version "phase1")
+  (uuid 036bd9ba-589d-4a51-8a34-b5a7aab8e143)
+  (paper "A4")
+  (title_block
+    (title "Emiuet Session Phase 1 Breadboard Testboard")
+    (date "2026-06-06")
+    (rev "phase1")
+    (company "EUB / Emnyeca")
+    (comment 1 "Teensy 4.1 + CD74HC4067 + 16 analog keys + USB/TRS MIDI CC test")
+  )
+  (text "Phase 1 intent: breadboard validation, not production hardware."
+    (exclude_from_sim no)
+    (at 20 22 0)
+    (effects (font (size 3 3)) (justify left bottom))
+    (uuid 86782bfe-70fb-4d7d-8411-f7b2af8b9fff)
+  )
+  (text "Teensy 4.1 pins: S0=2, S1=3, S2=4, S3=5, MUX_SIG=A0, NEXT=6, PREV=7, TRS_TX=1/Serial1."
+    (exclude_from_sim no)
+    (at 20 35 0)
+    (effects (font (size 2 2)) (justify left bottom))
+    (uuid f07eba94-1b04-48a3-8ab5-7773088f8af8)
+  )
+  (text "CD74HC4067: VCC=3.3V, EN=GND, C0-C15=analog key outputs, SIG=Teensy A0. Keep all analog signals within 0-3.3V."
+    (exclude_from_sim no)
+    (at 20 45 0)
+    (effects (font (size 2 2)) (justify left bottom))
+    (uuid a84abf2c-cb4f-41a1-bd8d-956650782515)
+  )
+  (text "TRS MIDI Type-A: use a proper MIDI output driver/current-limiting circuit. Firmware sends Serial1 at 31250 baud."
+    (exclude_from_sim no)
+    (at 20 55 0)
+    (effects (font (size 2 2)) (justify left bottom))
+    (uuid b1836f56-a471-4631-ad10-c42f90d4caea)
+  )
+  (sheet_instances
+    (path "/" (page "1"))
+  )
+)

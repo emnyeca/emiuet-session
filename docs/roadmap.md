@@ -5,6 +5,13 @@ This document outlines the planned phases for the Emiuet Session project.  The r
 
 ## Phase 1 – Basic Prototype
 
+Status: in progress. Initial firmware, breadboard wiring notes, experiment log, and KiCad testboard project have been added.
+
+- Firmware: `platformio.ini`, `src/`, `include/`
+- Wiring and bring-up: `docs/phase1_breadboard.md`
+- Experiment results: `docs/experiments/phase1_results.md`
+- KiCad testboard project: `kicad/phase1-testboard/`
+
 - Set up the Teensy development environment using PlatformIO and Visual Studio Code.
 - Implement scanning for 16 (largest) analogue keys and basic debouncing.
 - Implement fixed song data and manually step through positions.

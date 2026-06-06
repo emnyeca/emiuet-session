@@ -7,24 +7,32 @@ Emiuet Session is a standalone improvisation instrument designed for jazz sessio
 
 Prototype phase.
 
+Current implementation focus: Phase 1 Teensy breadboard prototype.
+
+- Firmware: `platformio.ini`, `src/`, `include/`
+- Breadboard wiring: `docs/phase1_breadboard.md`
+- Experiment log: `docs/experiments/phase1_results.md`
+- KiCad testboard project: `kicad/phase1-testboard/`
+
 ## Documentation
 
 ### User Documentation
 
-- vision.en.md
-- requirements.en.md
-- glossary.en.md
+- docs/vision.md
+- docs/requirements.md
+- docs/glossary.md
 
 ### Developer Documentation
 
-- architecture.ja.md
-- hardware.ja.md
-- midi.ja.md
-- roadmap.ja.md
+- docs/architecture.md
+- docs/hardware.md
+- docs/midi.md
+- docs/roadmap.md
+- docs/phase1_breadboard.md
 
 ### AI Worker Documentation
 
-- ai_worker_guidelines.ja.md
+- docs/ai_worker_guidelines.ja.md
 
 ## Governance
 
