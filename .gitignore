@@ -37,3 +37,6 @@ fabrication/
 *.bak
 *.old
 *.swp
+
+# Workspace
+*.code-workspace
