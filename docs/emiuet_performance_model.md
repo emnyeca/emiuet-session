@@ -1,122 +1,112 @@
-# Performance Model & 8-Slot Layout
+# Performance Model と 8-Slot Layout
 
-## 概要 (JA)
+ここでは 3 つのモデル（Song / HarmonicAnalysis / PerformanceModel）の違い、8 キーへの
+配置アルゴリズム、そして「slot voicing 重複除去（slot voicing de-duplication）」を
+説明します。重複除去は**ボイシング上の調整**であり、和声解析を書き換えるものでは
+ありません。
 
-ここでは 3 つのモデル（Song / Harmonic Analysis / Performance Model）の違いと、
-8キーへの配置アルゴリズム、そして「スロット・ボイシング重複除去（slot voicing
-de-duplication）」を説明します。重複除去は**ボイシング上の調整**であり、和声解析を
-書き換えるものではありません。
+## 3 つの異なるモデル
 
-## Three distinct models
+| Model | 何か | 誰が作るか |
+|-------|------|-----------|
+| `Song` (`model/song.py`) | structure / meter / tempo / bar 内の chord symbol | EUB Changes import |
+| `HarmonicAnalysis` (`model/analysis.py`) | chord ごとの理論: chord tone, LPC, scale, pitch ごとの role/weight | EUB Changes analysis |
+| `PerformanceModel` (`model/performance.py`) | 演奏用の 8-slot layout、segment/step にまとめたもの | Emiuet Session Model Builder |
 
-| Model | What it is | Who produces it |
-|-------|------------|-----------------|
-| `Song` (`model/song.py`) | structure, meter, tempo, chord symbols in bars | EUB Changes import |
-| `HarmonicAnalysis` (`model/analysis.py`) | per-chord theory: chord tones, LPC, scale, per-pitch role/weight | EUB Changes analysis |
-| `PerformanceModel` (`model/performance.py`) | the playable 8-slot layout, grouped into segments/steps | Emiuet Session Model Builder |
+これらは意図的に分けています。Song は*曲が何か*、Analysis は*音が何を意味するか*、
+PerformanceModel は*8 キーでどう弾くか*を表します。
 
-They are deliberately separate. The Song says *what the tune is*; the Analysis
-says *what notes mean*; the Performance Model says *how to play it on 8 keys*.
+### Segment と Step
 
-### Segment vs Step
+- **Segment** — **Next** 1 回で進む単位。
+- **Step** — segment の*内部*での chord change。step は tempo に従って自動進行する。
 
-- **Segment** — the unit advanced by one **Next** press.
-- **Step** — a chord change *inside* a segment; steps auto-advance by tempo.
+速いテンポでは、1 つの segment が複数の step を持って自動で進む一方、演奏者は心地よい
+頻度で Next を押せます。
 
-So at a fast tempo a segment may hold several steps that walk by themselves,
-while the player presses Next at a comfortable rate.
+## HarmonicAnalysis: Changes の export contract
 
-## Harmonic Analysis: the Changes export contract
+`HarmonicStep` は、Changes の exporter に埋めてほしい形です: chord symbol, root,
+quality, chord tones, LPC, 選択した scale + priority, retry/fallback level, そして
+`PitchCandidate` のリスト。各 candidate は `pitch_class`, `label`（degree）, `role`,
+`weight`, `stability`, `tension` を持ちます。
 
-`HarmonicStep` is the shape we want a Changes exporter to fill: chord symbol,
-root, quality, chord tones, LPC, selected scale + priority, retry/fallback
-level, and a list of `PitchCandidate`s. Each candidate carries `pitch_class`,
-`label` (degree), `role`, `weight`, `stability`, `tension`.
+`PitchRole` ∈ {core, tension, altered_tension, approach, avoid, color}。role と weight
+が slot 配置を決めます。
 
-`PitchRole` ∈ {core, tension, altered_tension, approach, avoid, color}. Role and
-weight drive slot placement.
+## 8-slot layout: 2 段 4 列 (`model/layout.py`)
 
-## 8-slot layout: two rows of four (`model/layout.py`)
-
-The surface is read as two rows (`LayoutOrientation.TWO_ROW_CORE_COLOR`, the R&D
-default):
+演奏面は 2 段で読みます（`LayoutOrientation.TWO_ROW_CORE_COLOR`、R&D の既定）。
 
 ```
 □ □ □ □   colour / tension line  (slots 1 3 5 7)
 ■ ■ ■ ■   core / high-importance line  (slots 0 2 4 6)
 ```
 
-- Each **line ascends** left-to-right (`■` ascending, `□` ascending).
-- The interleaved single-row reading **need not** ascend.
-- The legacy single-row `ALTERNATING_ROW` (`■ □ ■ □ ■ □ ■ □`) is still supported;
-  the slot indices and note assignment are identical, only the display differs.
+- 各**ラインは低→高に昇順**（`■` 昇順、`□` 昇順）。
+- 交互に読んだ 1 列の並びは昇順である**必要はない**。
+- 旧来の 1 列 `ALTERNATING_ROW`（`■ □ ■ □ ■ □ ■ □`）も引き続きサポート。slot index と
+  note 割り当ては同一で、表示だけが違います。
 
-### Algorithm
+### アルゴリズム
 
-1. Drop excluded roles (approach) and, in NORMAL, suppressed roles (avoid).
-2. Sort core-eligible and colour-eligible candidates by weight (stability, then
-   pitch class as deterministic tie-breaks).
-3. Take 4 core notes for the core line and up to 4 colour notes for the colour
-   line. The colour line is reserved for colour; it only borrows a chord tone
-   when a 7-note scale leaves it short (see colour fill).
-4. Place notes and pick octaves:
-   - **Initial step** (no previous layout, `InitialLayoutOrder.ANCHOR_LOW_TO_HIGH`):
-     each line rises low→high from a C anchor (MIDI 60).
-   - **Subsequent steps**: choose the assignment that **minimises total per-slot
-     register jump** from the previous layout (≤24 permutations) so ii-V-I and
-     similar progressions voice-lead smoothly. (Strict per-line ascent is a
-     property of the initial layout; subsequent steps prioritise voice leading.)
-5. **Slot voicing de-duplication** safety net (below).
+1. excluded role（approach）を除外し、NORMAL では suppressed role（avoid）も除外。
+2. core 候補と colour 候補を weight で sort（tie-break は stability、次に pitch class、
+   決定的に）。
+3. core line に 4 つ、colour line に最大 4 つの音を取る。colour line は colour 専用で、
+   7-note scale で足りないときだけ chord tone を借りる（colour fill 参照）。
+4. 音を配置し、octave を選ぶ:
+   - **初期 step**（previous layout なし、`InitialLayoutOrder.ANCHOR_LOW_TO_HIGH`）:
+     各ラインを C anchor（MIDI 60）から低→高に並べる。
+   - **後続 step**: previous layout からの**スロットごとの register 跳躍の合計を最小化**
+     する割り当てを選ぶ（≤24 通りの順列）。これで ii-V-I などが滑らかに voice-lead する。
+     （厳密なライン昇順は初期 layout の性質。後続 step は voice leading を優先する。）
+5. **slot voicing 重複除去**のセーフティネット（後述）。
 
-All weights/policy live in `LayoutPolicy` — no magic numbers scattered around.
-The builder is deterministic, so layouts are testable.
+weight / policy はすべて `LayoutPolicy` にあり、magic number を散らしていません。builder
+は決定的なので layout は test 可能です。
 
-### Colour fill (when a scale leaves the colour line short)
+### colour fill（scale が colour line に足りないとき）
 
-A 7-note scale has only 3 non-chord tones, so the 4th colour slot must borrow a
-chord tone. Instead of duplicating a note the core line already plays, the
-borrowed tone is placed as the **nearest ascending continuation above the colour
-line** — an upper-octave extension. The same pitch class at a different octave is
-allowed (and musically useful on an 8-key surface); fill notes may exceed the
-nominal register span.
+7-note scale は non-chord tone が 3 つしかないため、4 つ目の colour slot は chord tone を
+借りる必要があります。core line が既に鳴らしている音を重複させる代わりに、借りた音は
+**colour line の上に続く最も近い昇順の音**として置きます（upper-octave extension）。
+同じ pitch class を別 octave に置くことは許容され（8 キー面では音楽的に有用）、fill 音は
+公称の register span を超えてもかまいません。
 
-Example (Dm7), produced deterministically:
+例（Dm7、決定的な出力）:
 
 ```
 □ E   G   B   C+1      colour line  (64 67 71 72)
 ■ C   D   F   A        core line    (60 62 65 69)
 ```
 
-The spec illustration writes the colour line as `B E G C+1`; the implementation
-emits `E G B C+1` — the same pitch-class set `{B, E, G, C}`, each line strictly
-ascending, with `C+1` the borrowed upper-octave extension (not a dead duplicate).
+仕様の図解では colour line を `B E G C+1` と書いていますが、実装は `E G B C+1` を
+出力します — pitch-class 集合は同じ `{B, E, G, C}` で、各ラインは厳密に昇順、`C+1` は
+借りた upper-octave extension（死にキーの重複ではない）です。
 
-### Slot voicing de-duplication
+### slot voicing 重複除去
 
-Where placement still yields an **exact same MIDI note** on two keys (mainly on
-voice-led subsequent steps), the de-dup pass (`LayoutPolicy.dedupe_voicing`,
-default on):
+配置の結果、2 つのキーが**完全に同じ MIDI note** になる場合（主に voice-lead する後続
+step）、重複除去 pass（`LayoutPolicy.dedupe_voicing`、既定 on）が:
 
-- keeps the **higher-priority** slot's note (core position first, then higher
-  weight, then lower index);
-- nudges the **lower-priority / colour** slot by whole octaves to a free,
-  in-range note, **only when** that frees a playable note;
-- never changes a pitch class or a role.
+- **優先度の高い** slot の音を保つ（core position が先、次に weight、次に index）。
+- **優先度の低い / colour** slot を whole octave 単位で空いている in-range の音へずらす。
+  ただし**演奏可能な音が空くときだけ**動かす。
+- pitch class や role は決して変えない。
 
-It is a voicing/playability adjustment, **not** a harmonic-analysis change. The
-same pitch class at different octaves is fine; only exact duplicate MIDI notes
-are removed.
+これは voicing / 演奏性の調整であって、**和声解析の変更ではありません**。同じ pitch
+class の別 octave は許容し、完全重複の MIDI note だけを除去します。
 
-## Assumptions in the sample fixture
+## sample fixture の仮定
 
-The built-in `Dm7 | G7 | Cmaj7 | A7alt` fixture (`fixtures/sample.py`) is a
-placeholder until a real Changes export is wired in. Documented assumptions:
+組み込みの `Dm7 | G7 | Cmaj7 | A7alt` fixture（`fixtures/sample.py`）は、実際の Changes
+export に接続するまでの placeholder です。仮定は以下の通り（明記）。
 
-- Weights/stability/tension values are hand-set, not Changes output.
-- LPCs are the obvious parent scales (Dorian / Mixolydian / Ionian / Altered).
-- The 11 is marked `avoid` on G7 and Cmaj7 (suppressed in NORMAL).
-- **A7alt** core is taken as the underlying A7 chord tones (A C# E G), with the
-  altered notes modelled as `altered_tension`/`color`. The natural 5th is kept
-  as a core tone for the 8-key surface even though a strict altered scale omits
-  it. If this diverges from the Changes theory spec, the exporter is the source
-  of truth and this fixture should be regenerated.
+- weight / stability / tension の値は手置きで、Changes 出力ではない。
+- LPC は素直な親 scale（Dorian / Mixolydian / Ionian / Altered）。
+- 11th は G7 と Cmaj7 で `avoid`（NORMAL では suppress）。
+- **A7alt** の core は土台の A7 chord tone（A C# E G）として扱い、altered 音は
+  `altered_tension` / `color` で表現する。strict な altered scale は natural 5th を
+  省くが、8 キー面のため core tone として残している。Changes の理論仕様とズレる場合は
+  exporter が正本であり、この fixture は再生成すべき。

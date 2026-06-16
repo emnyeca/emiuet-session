@@ -1,0 +1,5 @@
+# Optional dependencies for the desktop MIDI controller harness only.
+# The Emiuet Session core has NO runtime dependencies and never imports these.
+#   pip install -r requirements-midi.txt
+mido>=1.3
+python-rtmidi>=1.5

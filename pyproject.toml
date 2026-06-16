@@ -4,6 +4,11 @@ version = "0.1.0"
 description = "Emiuet Session R&D core: portable chord-aware improvisation engine"
 requires-python = ">=3.10"
 
+# The core has no runtime dependencies. MIDI input is an optional extra used only
+# by the desktop controller harness (apps/desktop_debug); see requirements-midi.txt.
+[project.optional-dependencies]
+midi = ["mido>=1.3", "python-rtmidi>=1.5"]
+
 [tool.pytest.ini_options]
 # Run pytest from the repo root; the package and apps are importable directly.
 pythonpath = ["."]

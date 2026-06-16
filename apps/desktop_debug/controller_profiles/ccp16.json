@@ -1,0 +1,23 @@
+{
+  "name": "CCP16BK default test profile (verify note numbers with raw log)",
+  "midi_channel": 1,
+  "note_mappings": {
+    "36": { "type": "slot", "slot": 0, "_comment": "core line, key 1" },
+    "37": { "type": "slot", "slot": 2, "_comment": "core line, key 2" },
+    "38": { "type": "slot", "slot": 4, "_comment": "core line, key 3" },
+    "39": { "type": "slot", "slot": 6, "_comment": "core line, key 4" },
+    "40": { "type": "slot", "slot": 1, "_comment": "colour line, key 1" },
+    "41": { "type": "slot", "slot": 3, "_comment": "colour line, key 2" },
+    "42": { "type": "slot", "slot": 5, "_comment": "colour line, key 3" },
+    "43": { "type": "slot", "slot": 7, "_comment": "colour line, key 4" },
+    "44": { "type": "command", "command": "previous_segment" },
+    "45": { "type": "command", "command": "next_segment" },
+    "46": { "type": "command", "command": "register_down" },
+    "47": { "type": "command", "command": "register_up" },
+    "48": { "type": "command", "command": "approach_minus" },
+    "49": { "type": "command", "command": "approach_plus" },
+    "50": { "type": "command", "command": "panic" },
+    "51": { "type": "command", "command": "register_reset" }
+  },
+  "control_mappings": {}
+}
