@@ -1,47 +1,39 @@
-# CCP16BK Mapping
+# CCP16BK マッピング
 
-## 概要 (JA)
+## CCP16 を R&D に使う目的
 
-CCP16BK は16パッドのMIDIパッドコントローラーで、各パッドは Note / CC / Program、
-Momentary / Toggle を本体で設定できます。Emiuet Session R&D では **Note +
-Momentary** を基本推奨とし、16パッドを **8演奏キー + 8制御キー**として使います。
-パッドのMIDI値は本体設定や初期値で異なり得るため、`ccp16.json` は「初期仮profile」
-です。実機の RAW ログで note 番号を確認し、profile を修正してください。
+CCP16BK は16パッドの MIDI パッドコントローラー（USB-B、BLE MIDI、TRS Type-A MIDI
+I/O 対応）で、各パッドは自由に割り当てできます。16パッドは Emiuet Session の
+8 演奏キー + 8 制御キーにちょうど対応するため、firmware 着手前に R&D core を実機で
+弾くのに向いています。
 
-## Why CCP16 for R&D
+## 16パッドの推奨役割
 
-It is a compact 16-pad controller (USB-B, BLE MIDI, TRS Type-A MIDI I/O) whose
-pads are freely assignable. Sixteen pads map cleanly onto Emiuet Session's
-8 performance keys plus 8 control keys, letting us play the R&D core on real
-hardware before any firmware work.
-
-## Recommended pad roles
-
-Emiuet Session's surface is two rows of four (TwoRowCoreColor):
+Emiuet Session の演奏面は 2 段 4 列（TwoRowCoreColor）です。
 
 ```
 □ □ □ □     colour line  (slots 1 3 5 7)
 ■ ■ ■ ■     core line    (slots 0 2 4 6)
 ```
 
-Suggested 4x4 pad layout (top two rows = performance, bottom two = control):
+4x4 パッドの推奨レイアウト（上 2 段 = 演奏、下 2 段 = 制御）:
 
 ```
-[colour s1] [colour s3] [colour s5] [colour s7]      <- play
-[core  s0 ] [core  s2 ] [core  s4 ] [core  s6 ]      <- play
+[colour s1] [colour s3] [colour s5] [colour s7]      <- 演奏
+[core  s0 ] [core  s2 ] [core  s4 ] [core  s6 ]      <- 演奏
 
-[prev_seg ] [next_seg ] [reg_down ] [reg_up   ]      <- control
-[approach-] [approach+] [panic    ] [reg_reset]      <- control
+[prev_seg ] [next_seg ] [reg_down ] [reg_up   ]      <- 制御
+[approach-] [approach+] [panic    ] [reg_reset]      <- 制御
 ```
 
-(Use `profile_cycle` instead of `register_reset` on the last control pad if you
-prefer; just edit the profile.)
+（最後の制御パッドは好みで `register_reset` の代わりに `profile_cycle` にしてもよい。
+profile を編集するだけ。）
 
-## Initial profile (`controller_profiles/ccp16.json`)
+## 初期 profile（`controller_profiles/ccp16.json`）
 
-The bundled profile assumes channel 1 and notes 36–51:
+同梱 profile は channel 1、note 36–51 を仮定しています。
 
-| Notes | Role |
+| Notes | 役割 |
 |---|---|
 | 36 37 38 39 | core line: slots 0, 2, 4, 6 |
 | 40 41 42 43 | colour line: slots 1, 3, 5, 7 |
@@ -50,26 +42,30 @@ The bundled profile assumes channel 1 and notes 36–51:
 | 48 49 | approach_minus, approach_plus |
 | 50 51 | panic, register_reset |
 
-These note numbers are an **assumption**. CCP16 pad values depend on the unit's
-settings, so verify before relying on them.
+これらの note 番号は **仮定**です。CCP16 のパッド値は本体設定で変わるため、実機で
+確認してから使ってください。
 
-## Setting up the CCP16
+## CCP16 側の設定
 
-1. Set the pads you will use to **Note** mode (not CC, not Program).
-2. Set them to **Momentary** (not Toggle) so each press sends Note On and each
-   release sends Note Off. Toggle mode leaves notes stuck on.
-3. Put all pads on the **same MIDI channel** and match the profile's
-   `midi_channel` (or omit `midi_channel` to accept any).
-4. Connect via **USB** for R&D testing.
+1. 使うパッドを **Note** モードにする（CC でも Program でもない）。
+2. **Momentary** にする（Toggle にしない）。これで押下=Note On、解放=Note Off が
+   送られる。Toggle だと note が鳴りっぱなしになる。
+3. 全パッドを **同じ MIDI channel** にし、profile の `midi_channel` と一致させる
+   （または `midi_channel` を省略して任意 channel を受け付ける）。
+4. R&D テストでは **USB** 接続を使う。
 
-## Verifying note numbers with the raw log
+## raw ログで note 番号を確認して profile を修正する
 
-1. Run the harness against the CCP16 (see midi_controller_testing.md).
-2. Press each pad and read the `RAW` line, e.g.
-   `RAW : note_on ch=1 note=38 velocity=120`.
-3. If a pad's note differs from the table, edit `ccp16.json` so that note maps to
-   the intended slot/command, and re-run. No code changes are needed.
+1. CCP16 に対してハーネスを起動する（midi_controller_testing.md 参照）。
+2. 各パッドを押し、`RAW` 行を読む。例:
+   `RAW : note_on ch=1 note=38 velocity=120`。
+3. パッドの note がこの表と違う場合、その note が意図した slot / command を指すように
+   `ccp16.json` を編集して再実行する。コード変更は不要。
 
-Because everything is profile-driven, the same harness works with any other
-16-pad controller by pointing `--profile` at a different JSON (see
-`generic_16pad.json`, which routes the 8 control keys through CC buttons).
+すべて profile 駆動なので、`--profile` に別の JSON を指定すれば他の 16 パッド
+コントローラーでも同じハーネスが使えます（制御キーを CC ボタンに割り当てた例として
+`generic_16pad.json` を同梱）。
+
+## ベンダーマニュアル
+
+CCP16 本体マニュアルは `docs/vender/cp_ccp16.pdf`（`.gitignore` 対象、ローカル参照用）。

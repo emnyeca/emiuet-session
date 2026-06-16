@@ -1,38 +1,42 @@
-# MIDI Controller Testing
+# MIDI コントローラーでの演奏テスト
 
-## 概要 (JA)
+## 目的
 
-PCキーボードのCLIだけでなく、市販のMIDIパッドコントローラーで Emiuet Session
-R&D Core を演奏テストするための adapter とハーネスです。MIDI入力は
-`apps/desktop_debug` 側の **adapter** として実装し、**core は MIDI ライブラリに
-依存しません**。`mido` / `python-rtmidi` は optional dependency で、実ポートを開く
-ときだけ遅延importされます。未インストールでも pytest と既存CLIは動きます。
+PC キーボードの CLI だけでなく、市販の MIDI パッドコントローラーで Emiuet
+Session R&D Core を実際に演奏テストするための adapter とハーネスです。
 
-## Purpose
+コントローラーのパッド/ボタンを、engine の 8 演奏 slot と制御コマンドへ割り当てる
+ことで、R&D core を実機で弾けるようにします。割り当ては JSON の controller
+profile で表現する **データ**なので、別のコントローラーへの対応は profile の差し替え
+だけで済み、コード変更は不要です。
 
-Map a hardware controller's pads/buttons to the engine's 8 performance slots and
-control commands, so the R&D core can be played for real. The mapping is data
-(a JSON profile), so swapping controllers is a profile change, not code.
+## core への依存方針
 
-## Dependencies
+MIDI 入力は `apps/desktop_debug` 側の **adapter** として実装してあり、**core は
+MIDI ライブラリに依存しません**（`emiuet_session/` に `mido` / `python-rtmidi` の
+import はありません）。`mido` は実ポートを開くときだけ遅延 import されるため、
+未インストールの環境でも pytest と既存 CLI は動作します。
 
-The core has no dependencies. The controller harness needs the optional extras:
+## 依存ライブラリ
+
+core には依存ライブラリがありません。コントローラーハーネスのみ optional extras が
+必要です。
 
 ```sh
 pip install -r requirements-midi.txt      # mido + python-rtmidi
-# or: pip install -e ".[midi]"
+# または: pip install -e ".[midi]"
 ```
 
-If they are not installed, `--list-ports` and live mode print a clear install
-hint; the `--self-test` mode and all unit tests still run.
+未インストールの場合、`--list-ports` とライブ実行は install 手順を案内します。
+`--self-test` モードと全 unit test はそのまま動きます。
 
-## Listing ports
+## ポート一覧の表示
 
 ```sh
 python -m apps.desktop_debug.midi_controller_harness --list-ports
 ```
 
-## Running the harness
+## ハーネスの起動
 
 ```sh
 python -m apps.desktop_debug.midi_controller_harness \
@@ -40,20 +44,20 @@ python -m apps.desktop_debug.midi_controller_harness \
   --profile apps/desktop_debug/controller_profiles/ccp16.json
 ```
 
-- `--midi-in` accepts an exact port name, a case-insensitive substring, or an
-  index from `--list-ports`.
-- `--layout-orientation two-row|alternating` chooses the display.
-- `--self-test` feeds synthetic messages and needs no hardware -- use it to see
-  the mapping + engine output and to sanity-check a profile.
+- `--midi-in` は、正確なポート名・大文字小文字を無視した部分一致・`--list-ports`
+  の index のいずれでも指定できます。
+- `--layout-orientation two-row|alternating` で表示を選びます。
+- `--self-test` は synthetic message を流すモードで、ハードウェア不要です。
+  mapping と engine 出力の確認、profile の動作確認に使えます。
 
-## Reading the log
+## ログの読み方
 
-Each incoming message prints:
+受信メッセージごとに次を出力します。
 
 ```
-RAW    : note_on ch=1 note=36 velocity=100      <- exactly what arrived
-MAPPED : slot 0 press                            <- the resolved action
-CORE   : NoteOn  ch1 n 60 v100                   <- abstract MIDI the engine emits
+RAW    : note_on ch=1 note=36 velocity=100      <- 受信した生メッセージ
+MAPPED : slot 0 press                            <- 解決したアクション
+CORE   : NoteOn  ch1 n 60 v100                   <- engine が出す抽象 MIDI
 [seg 1/4 step 1/1]  Dm7 > G7    OCT+0  NORM  (two-row)
   color: .E  .G  .B  .C+1
   core : #C  #D  #F  #A
@@ -61,10 +65,11 @@ CORE   : NoteOn  ch1 n 60 v100                   <- abstract MIDI the engine emi
   midi : NoteOn  ch1 n 60 v100
 ```
 
-`RAW` shows the channel **1-based** (mido reports 0-based internally). Use `RAW`
-to discover your controller's real note/CC numbers, then edit the profile.
+`RAW` の channel は **1 始まり**で表示します（mido 内部は 0 始まり）。`RAW` を見れば
+コントローラー実機の note / CC 番号が分かるので、その番号に合わせて profile を
+編集します。
 
-## Controller profile JSON
+## controller profile JSON の書き方
 
 ```json
 {
@@ -80,34 +85,34 @@ to discover your controller's real note/CC numbers, then edit the profile.
 }
 ```
 
-- `midi_channel` is 1-based; omit it to accept any channel.
-- `note_mappings` keys are MIDI note numbers; `control_mappings` keys are CC
-  numbers.
-- Action `type` is `slot` (with `slot` 0..7) or `command`.
-- Commands: `next_segment`, `previous_segment`, `register_up`, `register_down`,
-  `register_reset`, `approach_plus`, `approach_minus`, `profile_cycle`, `panic`.
+- `midi_channel` は 1 始まり。省略すると任意の channel を受け付けます。
+- `note_mappings` の key は MIDI note 番号、`control_mappings` の key は CC 番号。
+- action `type` は `slot`（`slot` は 0..7）または `command`。
+- `command` の種類: `next_segment`, `previous_segment`, `register_up`,
+  `register_down`, `register_reset`, `approach_plus`, `approach_minus`,
+  `profile_cycle`, `panic`。
 
-### Note vs CC mapping
+### Note と CC の押下判定の違い
 
-| | Pressed | Released |
+| | 押下 (press) | 解放 (release) |
 |---|---|---|
-| **Note** | `note_on` velocity > 0 | `note_off`, or `note_on` velocity 0 |
+| **Note** | `note_on` velocity > 0 | `note_off`、または `note_on` velocity 0 |
 | **CC** | value ≥ 64 | value < 64 |
 
-`approach_plus` / `approach_minus` use both edges (hold to engage). All other
-commands fire once on press and ignore the release edge.
+`approach_plus` / `approach_minus` は press と release の両方を使います（押している間
+だけ有効）。それ以外の command は press で 1 回発火し、release は無視します。
 
 ## Troubleshooting
 
-- **No ports listed** — check the cable/driver; for USB connect before launching.
-  On macOS a virtual port may need the controller's own driver.
-- **Bluetooth MIDI visible but no input** — pair/connect in the OS MIDI settings
-  first; prefer **USB** for R&D testing (BLE specifics are out of scope here).
-- **Note On arrives but no Note Off** — the pad is in **Toggle** mode; switch it
-  to **Momentary** (see ccp16_mapping.md). Otherwise a note stays held.
-- **Nothing happens / `(channel N ignored)`** — the controller's channel differs
-  from the profile's `midi_channel`; match them or omit `midi_channel`.
-- **Wrong notes trigger** — the profile's note numbers don't match the device;
-  read the `RAW` log and edit the profile.
-- **`velocity 0` Note On** — handled: it is treated as a Note Off (slot release).
-- **Toggle/latched pads** — not assumed anywhere; use Momentary.
+- **ポートが見えない** — ケーブル/ドライバを確認。USB は起動前に接続する。macOS では
+  コントローラー専用ドライバが必要な場合がある。
+- **Bluetooth MIDI で見えるが入力が来ない** — まず OS の MIDI 設定でペアリング/接続
+  する。R&D テストでは **USB** を優先（BLE 固有問題は本書の対象外）。
+- **Note On は来るが Note Off が来ない** — パッドが **Toggle** モード。**Momentary**
+  に切り替える（ccp16_mapping.md 参照）。そのままだと note が鳴りっぱなしになる。
+- **何も起きない / `(channel N ignored)`** — コントローラーの channel が profile の
+  `midi_channel` と違う。合わせるか `midi_channel` を省略する。
+- **意図しない音が鳴る** — profile の note 番号が実機と違う。`RAW` ログを見て profile
+  を修正する。
+- **velocity 0 の Note On が来る** — 対応済み。Note Off（slot release）として扱う。
+- **Toggle / latch するパッド** — どこでも前提にしていない。Momentary を使う。
