@@ -34,11 +34,38 @@ Allowed manual-advance lengths, in quarter-note beats (the universal unit):
 
 ## SegmentPolicy (`model/meter.py`)
 
-`choose_advance_beats(meter, tempo)` picks the largest allowed length whose
-duration fits the 1–2 s window; if none fit, the largest under the max; if all
-are too long, the smallest. `group_indices(...)` then walks the chord durations,
-closing a segment once the accumulated length reaches the chosen advance. A
-single long chord becomes its own segment; several short chords combine.
+`SegmentPolicy` chooses the advance length by aiming for a comfortable manual
+operation interval, **not** by taking the largest length that fits.
+
+Defaults: `ideal_manual_interval_s = 1.0`, `min_manual_interval_s = 0.8`,
+`max_manual_interval_s = 2.0`.
+
+`choose_advance_beats(meter, tempo)`:
+
+1. Collect the meter's allowed lengths whose duration at this tempo lands in the
+   `[min, max]` window.
+2. Among those, pick the one **closest to `ideal_manual_interval_s`**.
+3. On a tie, prefer the **shorter** advance.
+4. If none land in the window, avoid the too-fast (below-min) lengths when any
+   slower option exists; otherwise fall back to the allowed length closest to
+   the ideal.
+
+So advance tracks tempo:
+
+| Meter / tempo | 1 beat | 2 beats | 4 beats | chosen |
+|---|---|---|---|---|
+| 4/4 @ 120 | 0.5 s | 1.0 s | 2.0 s | **2 beats** |
+| 4/4 @ 240 | 0.25 s | 0.5 s | 1.0 s | **4 beats** |
+| 4/4 @ 60 | 1.0 s | 2.0 s | 4.0 s | **1 beat** |
+| 3/4 @ 120 | 0.5 s | — | 3 beats = 1.5 s | **3 beats** |
+| 5/4 @ 120 | 0.5 s | 1.0 s | 3 beats = 1.5 s, 5 = 2.5 s | **2 beats** |
+
+For 5/4 the 2-beat and 3-beat advances express the 2+3 / 3+2 groupings; the
+policy chooses the one nearest the ideal interval (2 beats at 120 BPM).
+
+`group_indices(...)` then walks the chord durations, closing a segment once the
+accumulated length reaches the chosen advance. A single long chord becomes its
+own segment; several short chords combine.
 
 `group_indices(..., override=[[...], ...])` uses an explicit grouping verbatim —
 the escape hatch for irregular meters or hand-authored phrasing.

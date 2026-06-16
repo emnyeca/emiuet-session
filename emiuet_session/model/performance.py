@@ -18,13 +18,27 @@ from ..core.pitch import note_name
 
 
 class SlotKind(Enum):
-    """The 8 keys alternate core/colour: ``■ □ ■ □ ■ □ ■ □``."""
-
     CORE = "core"
     COLOR = "color"
     TENSION = "tension"
     ALTERED = "altered"
     APPROACH = "approach"
+
+
+class LayoutOrientation(Enum):
+    """How the 8 slots are read on the surface.
+
+    The slot indices (0..7, even = core, odd = colour) are the same in both; only
+    the visual/melodic interpretation differs.
+    """
+
+    # ``■ □ ■ □ ■ □ ■ □`` -- one row, core and colour interleaved (legacy).
+    ALTERNATING_ROW = "alternating_row"
+    # Two rows of four: bottom = core line, top = colour line. Each line ascends
+    # left-to-right; the interleaved reading need not ascend. R&D default.
+    #   □ □ □ □   (colour: slots 1 3 5 7)
+    #   ■ ■ ■ ■   (core:   slots 0 2 4 6)
+    TWO_ROW_CORE_COLOR = "two_row_core_color"
 
 
 @dataclass(frozen=True)
@@ -46,6 +60,7 @@ class Layout:
     """Exactly 8 slots, core in even positions, colour in odd positions."""
 
     slots: tuple[Slot, ...]
+    orientation: LayoutOrientation = LayoutOrientation.TWO_ROW_CORE_COLOR
 
     def __post_init__(self) -> None:
         if len(self.slots) != 8:
@@ -56,6 +71,14 @@ class Layout:
 
     def note_labels(self) -> tuple[str, ...]:
         return tuple(note_name(s.pitch_class) for s in self.slots)
+
+    def core_slots(self) -> tuple[Slot, ...]:
+        """The core line (bottom row): slots 0, 2, 4, 6 -- ascending in pitch."""
+        return tuple(self.slots[i] for i in (0, 2, 4, 6))
+
+    def color_slots(self) -> tuple[Slot, ...]:
+        """The colour line (top row): slots 1, 3, 5, 7 -- ascending in pitch."""
+        return tuple(self.slots[i] for i in (1, 3, 5, 7))
 
 
 @dataclass

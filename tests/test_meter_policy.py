@@ -38,9 +38,29 @@ def test_segment_override_is_used_verbatim():
     assert groups == override
 
 
-def test_advance_choice_respects_target_window():
-    # At 120 BPM a quarter-beat is 0.5 s; the 4-beat advance (2.0 s) fits best.
+def test_advance_targets_ideal_manual_interval():
+    # SegmentPolicy aims for ~1 manual press/second, not the largest length that
+    # fits the window.
     policy = SegmentPolicy()
-    assert policy.choose_advance_beats(MeterPolicy(4, 4), 120) == 4.0
-    # At a very fast tempo, larger groupings keep manual actions comfortable.
-    assert policy.choose_advance_beats(MeterPolicy(4, 4), 240) == 4.0
+    assert policy.choose_advance_beats(MeterPolicy(4, 4), 120) == 2.0  # 2 beats = 1.0 s
+    assert policy.choose_advance_beats(MeterPolicy(4, 4), 240) == 4.0  # 4 beats = 1.0 s
+    assert policy.choose_advance_beats(MeterPolicy(4, 4), 60) == 1.0  # 1 beat = 1.0 s
+
+
+def test_advance_three_four_120():
+    policy = SegmentPolicy()
+    # allowed 1 (0.5 s) and 3 (1.5 s); 3 beats is closest to the 1.0 s ideal.
+    assert policy.choose_advance_beats(MeterPolicy(3, 4), 120) == 3.0
+
+
+def test_advance_tie_breaks_to_shorter():
+    # 5/4 @ 150 BPM: 2 beats = 0.8 s and 3 beats = 1.2 s are equidistant from the
+    # 1.0 s ideal; the shorter advance wins.
+    policy = SegmentPolicy()
+    assert policy.choose_advance_beats(MeterPolicy(5, 4), 150) == 2.0
+
+
+def test_advance_unknown_meter_does_not_break():
+    policy = SegmentPolicy()
+    choice = policy.choose_advance_beats(MeterPolicy(7, 8), 120)
+    assert choice in MeterPolicy(7, 8).allowed_advance_beats()

@@ -6,8 +6,9 @@ DisplayState. A GUI front-end can later reuse the same engine the same way.
 
 Run::
 
-    python -m apps.desktop_debug            # interactive
-    python -m apps.desktop_debug --demo     # scripted demonstration
+    python -m apps.desktop_debug                            # interactive (two-row)
+    python -m apps.desktop_debug --layout-orientation alternating
+    python -m apps.desktop_debug --demo                     # scripted demonstration
     python -m apps.desktop_debug --script FILE
 
 Interactive commands (type ``help``)::
@@ -17,7 +18,11 @@ Interactive commands (type ``help``)::
     mode octave|fifth|fourth|custom N               app+ / app- / app0  approach
     tempo BPM   change tempo                         tick MS  advance virtual time
     profile     cycle profile                        panic   all active notes off
+    orientation [two-row|alternating]  switch/show view   layout  show current view
     state       reprint                              help / quit
+
+Two-row view (TWO_ROW_CORE_COLOR): the colour line is the top row and the core
+line the bottom row; each line ascends left to right.
 """
 
 from __future__ import annotations
@@ -39,6 +44,9 @@ _MODES = {
 
 _DEMO_SCRIPT = """\
 state
+layout
+orientation alternating
+orientation two-row
 1
 hold 0
 next
@@ -58,29 +66,41 @@ prev
 
 
 class DebugConsole:
-    def __init__(self, core: EmiuetCore) -> None:
+    def __init__(self, core: EmiuetCore, orientation: str = "two-row") -> None:
         self.core = core
         self.clock_ms = 0.0
+        self.render_orientation = orientation  # "two-row" | "alternating"
 
     # ---- rendering -----------------------------------------------------
+
+    def _key_block(self, d) -> list[str]:
+        if self.render_orientation == "two-row":
+            # Two rows of four; each line ascends left to right.
+            color = "  ".join(f".{label}" for label in d.color_line)  # . = colour
+            core = "  ".join(f"#{label}" for label in d.core_line)  # # = core
+            return [f"  color: {color}", f"  core : {core}"]
+        keys = []
+        for i, label in enumerate(d.slot_labels):
+            marker = "#" if i % 2 == 0 else "."
+            keys.append(f"{i + 1}{marker}{label}")
+        return ["  keys : " + "  ".join(keys)]
 
     def render(self, out: OutputFrame) -> str:
         d = out.display
         assert d is not None
-        keys = []
-        for i, label in enumerate(d.slot_labels):
-            marker = "#" if i % 2 == 0 else "."  # core / colour, ASCII-safe
-            keys.append(f"{i + 1}{marker}{label}")
         lines = [
             f"[seg {d.segment_index + 1}/{d.segment_count} "
             f"step {d.step_index + 1}/{d.step_count}]  "
-            f"{d.current_chord} > {d.next_chord}    {d.register_label}  {d.profile_label}",
-            "  keys: " + "  ".join(keys),
-            f"  dbg : {d.selected_collection} prio{d.scale_priority} "
-            f"retry{d.retry_level} lpc={list(d.lpc)} active={list(d.active_notes)}",
+            f"{d.current_chord} > {d.next_chord}    {d.register_label}  {d.profile_label}"
+            f"  ({self.render_orientation})",
         ]
+        lines += self._key_block(d)
+        lines.append(
+            f"  dbg  : {d.selected_collection} prio{d.scale_priority} "
+            f"retry{d.retry_level} lpc={list(d.lpc)} active={list(d.active_notes)}"
+        )
         for ev in out.midi_events:
-            lines.append("  midi: " + ev.short())
+            lines.append("  midi : " + ev.short())
         return "\n".join(lines)
 
     # ---- command handling ---------------------------------------------
@@ -155,6 +175,11 @@ class DebugConsole:
         if cmd == "panic":
             return self.render(self.feed(InputFrame(panic=True)))
 
+        if cmd in ("orientation", "layout"):
+            if args and args[0].lower() in ("two-row", "two", "alternating", "alt"):
+                self.render_orientation = "two-row" if args[0].lower().startswith("two") else "alternating"
+            return self.render(self.feed(InputFrame()))
+
         return f"unknown command: {line.strip()} (type 'help')"
 
 
@@ -172,7 +197,13 @@ def _run_lines(console: DebugConsole, lines: list[str], echo: bool) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
-    console = DebugConsole(EmiuetCore(sample_performance_model()))
+
+    orientation = "two-row"
+    if "--layout-orientation" in argv:
+        value = argv[argv.index("--layout-orientation") + 1].lower()
+        orientation = "alternating" if value.startswith("alt") else "two-row"
+
+    console = DebugConsole(EmiuetCore(sample_performance_model()), orientation=orientation)
 
     print("Emiuet Session -- desktop debug harness")
     print(f"Loaded: {console.core.model.source_title}  "

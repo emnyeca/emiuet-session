@@ -55,21 +55,43 @@ class MeterPolicy:
 
 @dataclass(frozen=True)
 class SegmentPolicy:
-    """Chooses how many beats one Next press covers, then groups chords."""
+    """Chooses how many beats one Next press covers, then groups chords.
 
-    target_min_s: float = 1.0
-    target_max_s: float = 2.0
+    The choice targets a comfortable *manual operation interval*: roughly one
+    Next press per second. Among the meter's allowed advance lengths, we pick the
+    one whose duration at the current tempo is closest to ``ideal_manual_interval_s``
+    (not simply the largest that fits). This gives the expected feel, e.g. 4/4 at
+    120 BPM -> 2 beats, at 240 BPM -> 4 beats, at 60 BPM -> 1 beat.
+    """
+
+    ideal_manual_interval_s: float = 1.0
+    min_manual_interval_s: float = 0.8
+    max_manual_interval_s: float = 2.0
 
     def choose_advance_beats(self, meter: MeterPolicy, tempo_bpm: float) -> float:
         spb = 60.0 / tempo_bpm  # seconds per quarter-beat
         allowed = meter.allowed_advance_beats()
-        # Prefer the largest allowed length whose duration fits the target window;
-        # fall back to the largest that is merely <= max; else the smallest.
-        fits = [b for b in allowed if b * spb <= self.target_max_s + 1e-9]
-        if fits:
-            ideal = [b for b in fits if b * spb >= self.target_min_s - 1e-9]
-            return max(ideal) if ideal else max(fits)
-        return min(allowed)
+
+        def seconds(beats: float) -> float:
+            return beats * spb
+
+        def closest_to_ideal(options: list[float]) -> float:
+            # Closest to the ideal interval; on a tie prefer the shorter advance.
+            return min(options, key=lambda b: (abs(seconds(b) - self.ideal_manual_interval_s), b))
+
+        in_window = [
+            b
+            for b in allowed
+            if self.min_manual_interval_s - 1e-9 <= seconds(b) <= self.max_manual_interval_s + 1e-9
+        ]
+        if in_window:
+            return closest_to_ideal(in_window)
+
+        # No allowed length lands in the comfortable window. Avoid the too-fast
+        # advances (below min) when any slower option exists; otherwise fall back
+        # to whatever allowed length is closest to the ideal.
+        not_too_fast = [b for b in allowed if seconds(b) >= self.min_manual_interval_s - 1e-9]
+        return closest_to_ideal(not_too_fast or list(allowed))
 
     def group_indices(
         self,

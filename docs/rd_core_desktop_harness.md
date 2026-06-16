@@ -11,8 +11,9 @@
 From the repo root:
 
 ```sh
-python -m apps.desktop_debug            # interactive
-python -m apps.desktop_debug --demo     # scripted demonstration
+python -m apps.desktop_debug                            # interactive (two-row)
+python -m apps.desktop_debug --layout-orientation alternating
+python -m apps.desktop_debug --demo                     # scripted demonstration
 python -m apps.desktop_debug --script FILE
 ```
 
@@ -34,22 +35,31 @@ front-end could reuse the engine the same way.
 | `tempo BPM` | change tempo (recomputes step timing) |
 | `tick MS` | advance virtual time (drives step auto-advance) |
 | `panic` | all active notes off |
+| `orientation [two-row\|alternating]` | switch / show the layout view |
+| `layout` | show the current view |
 | `state` | reprint current state |
 | `help` / `quit` | help / exit |
 
-## Reading the output
+## Reading the output (two-row, default)
 
 ```
-[seg 1/4 step 1/1]  Dm7 > G7    OCT+0  NORM
-  keys: 1#C  2.D  3#D  4.E  5#F  6.G  7#A  8.B
-  dbg : D Dorian prio1 retry0 lpc=[2, 4, 5, 7, 9, 11, 0] active=[]
-  midi: NoteOn  ch1 n 60 v100
+[seg 1/4 step 1/1]  Dm7 > G7    OCT+0  NORM  (two-row)
+  color: .E  .G  .B  .C+1
+  core : #C  #D  #F  #A
+  dbg  : D Dorian prio1 retry0 lpc=[2, 4, 5, 7, 9, 11, 0] active=[]
+  midi : NoteOn  ch1 n 60 v100
 ```
 
-- line 1 — segment/step progress, current → next chord, register label, profile.
-- line 2 — the 8 keys; `#` marks a core key, `.` a colour key, then the note name.
-- line 3 — debug context (selected scale, priority, retry level, LPC, active notes).
-- `midi:` lines — the abstract events emitted this frame.
+- line 1 — segment/step progress, current → next chord, register label, profile,
+  and the current view name.
+- colour line (top, `.`) and core line (bottom, `#`); each ascends left-to-right.
+  `C+1` is one octave above the C-anchor register (the borrowed upper extension).
+- `dbg` — selected scale, priority, retry level, LPC, active notes.
+- `midi` — the abstract events emitted this frame.
+
+`orientation alternating` switches to the single-row view
+(`keys : 1#C  2.E  3#D ...`); the note values are identical, only the reading
+changes.
 
 ## What the demo shows
 

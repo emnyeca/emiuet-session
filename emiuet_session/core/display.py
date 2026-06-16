@@ -19,6 +19,11 @@ class DisplayState:
     profile_label: str = ""
     slot_labels: tuple[str, ...] = ()  # 8 note labels, left to right
 
+    # Two-row view: each line is four labels (octave-aware, e.g. "C+1"), ascending.
+    orientation: str = ""
+    core_line: tuple[str, ...] = ()  # bottom row, slots 0 2 4 6
+    color_line: tuple[str, ...] = ()  # top row, slots 1 3 5 7
+
     # Progress.
     segment_index: int = 0
     segment_count: int = 0

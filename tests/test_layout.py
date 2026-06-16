@@ -1,8 +1,9 @@
 """8-slot layout builder behaviour (spec tests 1-5)."""
 
+from emiuet_session.core.pitch import note_name
 from emiuet_session.fixtures.sample import sample_analysis
 from emiuet_session.model.layout import LayoutPolicy, build_layout
-from emiuet_session.model.performance import Layout, SlotKind
+from emiuet_session.model.performance import Layout, LayoutOrientation, SlotKind
 
 STEPS = sample_analysis().steps  # Dm7, G7, Cmaj7, A7alt
 CORE_INDICES = (0, 2, 4, 6)
@@ -65,18 +66,72 @@ def test_no_duplicate_midi_notes_in_layout():
         assert len(set(notes)) == 8
 
 
-# --- slot voicing de-duplication ----------------------------------------
+# --- two-row orientation & line ordering --------------------------------
 
 
-def test_dm7_does_not_map_same_midi_note_to_two_keys():
-    # Without de-dup the borrowed chord tone collides (e.g. 62 on two keys);
-    # with the default policy every key sounds a distinct note.
-    off = build_layout(STEPS[0], policy=LayoutPolicy(dedupe_voicing=False))
-    on = build_layout(STEPS[0])
-    off_notes = [s.preferred_midi for s in off.slots]
-    on_notes = [s.preferred_midi for s in on.slots]
-    assert len(set(off_notes)) < 8  # the collision the pass exists to fix
-    assert len(set(on_notes)) == 8
+def test_two_row_orientation_is_default():
+    assert build_layout(STEPS[0]).orientation is LayoutOrientation.TWO_ROW_CORE_COLOR
+
+
+def test_core_line_ascends_low_to_high():
+    for step in STEPS:
+        core = build_layout(step).core_slots()
+        notes = [s.preferred_midi for s in core]
+        assert notes == sorted(notes) and len(set(notes)) == 4
+
+
+def test_color_line_ascends_low_to_high():
+    for step in STEPS:
+        color = build_layout(step).color_slots()
+        notes = [s.preferred_midi for s in color]
+        assert notes == sorted(notes) and len(set(notes)) == 4
+
+
+def test_dm7_core_line_is_c_d_f_a():
+    core = build_layout(STEPS[0]).core_slots()
+    assert [s.pitch_class for s in core] == [0, 2, 5, 9]  # C D F A
+
+
+def test_dm7_color_line_pitch_classes_match_b_e_g_c():
+    # Spec illustration is "B E G C+1"; the deterministic AnchorLowToHigh output
+    # is E G B C+1 (64 67 71 72) -- same pitch-class set {E G B C}, each line
+    # strictly ascending, with C borrowed as an upper-octave extension.
+    color = build_layout(STEPS[0]).color_slots()
+    assert {s.pitch_class for s in color} == {4, 7, 11, 0}  # E G B C
+    assert [note_name(s.pitch_class) for s in color] == ["E", "G", "B", "C"]
+
+
+def test_alternating_row_orientation_still_supported():
+    layout = build_layout(STEPS[0], policy=LayoutPolicy(orientation=LayoutOrientation.ALTERNATING_ROW))
+    assert layout.orientation is LayoutOrientation.ALTERNATING_ROW
+    for i in CORE_INDICES:
+        assert layout.slots[i].kind is SlotKind.CORE
+
+
+# --- colour fill & slot voicing de-duplication --------------------------
+
+
+def test_borrowed_fill_is_upper_octave_extension():
+    # Dm7 has only 3 colour tones; the 4th colour slot borrows a chord tone and
+    # places it as an upper-octave extension (same pitch class as a core slot, a
+    # higher MIDI note) -- not a dead duplicate.
+    layout = build_layout(STEPS[0])
+    core_by_pc = {s.pitch_class: s.preferred_midi for s in layout.core_slots()}
+    extensions = [
+        s
+        for s in layout.color_slots()
+        if s.pitch_class in core_by_pc and s.preferred_midi > core_by_pc[s.pitch_class]
+    ]
+    assert extensions  # at least one octave-extension fill note
+
+
+def test_same_pitch_class_different_octave_allowed_but_no_exact_duplicate():
+    for step in STEPS:
+        notes = [s.preferred_midi for s in build_layout(step).slots]
+        assert len(set(notes)) == 8  # no exact duplicate MIDI note
+    # And the Dm7 layout deliberately repeats pitch class C at two octaves.
+    pcs = [s.pitch_class for s in build_layout(STEPS[0]).slots]
+    assert pcs.count(0) == 2  # C and C+1
 
 
 def test_voicing_dedup_preserves_pitch_classes():
@@ -86,22 +141,17 @@ def test_voicing_dedup_preserves_pitch_classes():
         assert [s.pitch_class for s in on.slots] == [s.pitch_class for s in off.slots]
 
 
-def test_voicing_dedup_preserves_alternation_and_roles():
-    on = build_layout(STEPS[0])
-    off = build_layout(STEPS[0], policy=LayoutPolicy(dedupe_voicing=False))
-    assert [s.kind for s in on.slots] == [s.kind for s in off.slots]
-    for i in CORE_INDICES:
-        assert on.slots[i].kind is SlotKind.CORE
+def test_dedup_pass_moves_colour_not_core_and_by_octave():
+    # Unit test of the safety net on a forced collision: a core slot and a colour
+    # slot resolve to the same MIDI note. The colour (lower-priority) slot moves,
+    # by a whole octave, and the pitch class is preserved.
+    from emiuet_session.model.analysis import PitchCandidate, PitchRole
+    from emiuet_session.model.layout import _dedupe_voicing
 
-
-def test_voicing_dedup_nudges_colour_not_core():
-    # Core slots keep their preferred note; the lower-priority colour slot moves.
-    off = build_layout(STEPS[0], policy=LayoutPolicy(dedupe_voicing=False))
-    on = build_layout(STEPS[0])
-    for i in CORE_INDICES:
-        assert on.slots[i].preferred_midi == off.slots[i].preferred_midi
-    moved = [i for i in COLOR_INDICES if on.slots[i].preferred_midi != off.slots[i].preferred_midi]
-    assert moved  # at least one colour slot was nudged
-    # A nudge is whole octaves only (pitch class unchanged).
-    for i in moved:
-        assert (on.slots[i].preferred_midi - off.slots[i].preferred_midi) % 12 == 0
+    core_cand = PitchCandidate(0, "R", PitchRole.CORE, weight=1.0)
+    color_cand = PitchCandidate(0, "8", PitchRole.COLOR, weight=0.5)
+    assigned = [(0, core_cand, 60), (1, color_cand, 60)]  # both land on MIDI 60
+    out = _dedupe_voicing(assigned, lo=36, hi=96)
+    assert out[0] == 60  # core slot keeps its note
+    assert out[1] != 60 and out[1] % 12 == 0  # colour moved, still pitch class C
+    assert (out[1] - 60) % 12 == 0  # by whole octaves

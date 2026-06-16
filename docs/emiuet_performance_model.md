@@ -36,44 +36,76 @@ level, and a list of `PitchCandidate`s. Each candidate carries `pitch_class`,
 `PitchRole` ∈ {core, tension, altered_tension, approach, avoid, color}. Role and
 weight drive slot placement.
 
-## 8-slot layout algorithm (`model/layout.py`)
+## 8-slot layout: two rows of four (`model/layout.py`)
 
-Surface: `■ □ ■ □ ■ □ ■ □` — `■` core (even indices), `□` colour/tension (odd).
+The surface is read as two rows (`LayoutOrientation.TWO_ROW_CORE_COLOR`, the R&D
+default):
+
+```
+□ □ □ □   colour / tension line  (slots 1 3 5 7)
+■ ■ ■ ■   core / high-importance line  (slots 0 2 4 6)
+```
+
+- Each **line ascends** left-to-right (`■` ascending, `□` ascending).
+- The interleaved single-row reading **need not** ascend.
+- The legacy single-row `ALTERNATING_ROW` (`■ □ ■ □ ■ □ ■ □`) is still supported;
+  the slot indices and note assignment are identical, only the display differs.
+
+### Algorithm
 
 1. Drop excluded roles (approach) and, in NORMAL, suppressed roles (avoid).
 2. Sort core-eligible and colour-eligible candidates by weight (stability, then
    pitch class as deterministic tie-breaks).
-3. Fill 4 core slots from the core pool, 4 colour slots from the colour pool.
-   Colour slots are reserved for colour; a group borrows from the other pool
-   only when it is short (so we don't fill every key with chord tones when
-   useful tensions exist).
-4. Assign pitch classes to specific slots and pick each note's octave:
-   - With a previous layout, choose the assignment that **minimises total
-     per-slot register jump** (brute force over ≤24 permutations) so ii-V-I and
-     similar progressions voice-lead smoothly.
-   - Without one, lay notes out in ascending pitch order around the anchor.
-5. **Slot voicing de-duplication** (see below).
+3. Take 4 core notes for the core line and up to 4 colour notes for the colour
+   line. The colour line is reserved for colour; it only borrows a chord tone
+   when a 7-note scale leaves it short (see colour fill).
+4. Place notes and pick octaves:
+   - **Initial step** (no previous layout, `InitialLayoutOrder.ANCHOR_LOW_TO_HIGH`):
+     each line rises low→high from a C anchor (MIDI 60).
+   - **Subsequent steps**: choose the assignment that **minimises total per-slot
+     register jump** from the previous layout (≤24 permutations) so ii-V-I and
+     similar progressions voice-lead smoothly. (Strict per-line ascent is a
+     property of the initial layout; subsequent steps prioritise voice leading.)
+5. **Slot voicing de-duplication** safety net (below).
 
 All weights/policy live in `LayoutPolicy` — no magic numbers scattered around.
 The builder is deterministic, so layouts are testable.
 
+### Colour fill (when a scale leaves the colour line short)
+
+A 7-note scale has only 3 non-chord tones, so the 4th colour slot must borrow a
+chord tone. Instead of duplicating a note the core line already plays, the
+borrowed tone is placed as the **nearest ascending continuation above the colour
+line** — an upper-octave extension. The same pitch class at a different octave is
+allowed (and musically useful on an 8-key surface); fill notes may exceed the
+nominal register span.
+
+Example (Dm7), produced deterministically:
+
+```
+□ E   G   B   C+1      colour line  (64 67 71 72)
+■ C   D   F   A        core line    (60 62 65 69)
+```
+
+The spec illustration writes the colour line as `B E G C+1`; the implementation
+emits `E G B C+1` — the same pitch-class set `{B, E, G, C}`, each line strictly
+ascending, with `C+1` the borrowed upper-octave extension (not a dead duplicate).
+
 ### Slot voicing de-duplication
 
-A 7-note scale has only 3 non-chord tones, so the 4th colour slot necessarily
-borrows a chord tone and can land on the **exact same MIDI note** as its core
-slot — a dead duplicate key. The de-dup pass (enabled by
-`LayoutPolicy.dedupe_voicing`, default on):
+Where placement still yields an **exact same MIDI note** on two keys (mainly on
+voice-led subsequent steps), the de-dup pass (`LayoutPolicy.dedupe_voicing`,
+default on):
 
 - keeps the **higher-priority** slot's note (core position first, then higher
   weight, then lower index);
 - nudges the **lower-priority / colour** slot by whole octaves to a free,
-  in-range note;
-- moves an octave **only when it frees a playable note**, otherwise leaves it;
+  in-range note, **only when** that frees a playable note;
 - never changes a pitch class or a role.
 
-It is a voicing/playability adjustment, **not** a harmonic-analysis change.
-Example (Dm7): without de-dup two keys sound MIDI 62; with it, the colour slot
-moves to 74 while the core D stays at 62.
+It is a voicing/playability adjustment, **not** a harmonic-analysis change. The
+same pitch class at different octaves is fine; only exact duplicate MIDI notes
+are removed.
 
 ## Assumptions in the sample fixture
 

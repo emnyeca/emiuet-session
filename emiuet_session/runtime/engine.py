@@ -23,7 +23,7 @@ from ..core.approach import ApproachState
 from ..core.display import DisplayState
 from ..core.frames import InputFrame, OutputFrame, RegisterCommand, SegmentCommand
 from ..core.midi import MidiEvent
-from ..core.pitch import clamp_midi
+from ..core.pitch import clamp_midi, note_label_octave
 from ..core.profile import PerformanceProfile
 from ..core.register_shift import RegisterShift
 from ..model.performance import Layout, PerformanceModel, Segment, Step
@@ -196,12 +196,16 @@ class EmiuetCore:
     def _display(self) -> DisplayState:
         step = self.current_step()
         segment = self.current_segment()
+        layout = self.current_layout()
         return DisplayState(
             current_chord=step.chord,
             next_chord=step.next_chord,
             register_label=self.register.label(),
             profile_label=_PROFILE_LABELS[self.profile],
-            slot_labels=self.current_layout().note_labels(),
+            slot_labels=layout.note_labels(),
+            orientation=layout.orientation.value,
+            core_line=tuple(note_label_octave(s.preferred_midi) for s in layout.core_slots()),
+            color_line=tuple(note_label_octave(s.preferred_midi) for s in layout.color_slots()),
             segment_index=self.segment_index,
             segment_count=self.model.segment_count(),
             step_index=self.step_index,

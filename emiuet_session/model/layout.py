@@ -1,37 +1,48 @@
 """8-slot layout builder.
 
-The playing surface is 8 keys with alternating importance::
+The surface is 8 keys, read as two rows of four (LayoutOrientation default
+``TWO_ROW_CORE_COLOR``)::
 
-    ■ □ ■ □ ■ □ ■ □     ■ = core (high importance)   □ = colour/tension
+    □ □ □ □   colour / tension line (slots 1 3 5 7)
+    ■ ■ ■ ■   core / high-importance line (slots 0 2 4 6)
+
+Each line ascends left-to-right; the interleaved reading need not ascend. The
+legacy single-row ``ALTERNATING_ROW`` (``■ □ ■ □ ■ □ ■ □``) is still supported.
 
 Goals (all tunable in one place via ``LayoutPolicy`` -- no scattered magic
 numbers):
 
-- Put the highest-weight chord/core notes in the core slots (even indices).
-- Put useful tension/colour notes in the colour slots (odd indices).
+- Put the highest-weight chord/core notes in the core line.
+- Put useful tension/colour notes in the colour line.
 - In the NORMAL profile, suppress strong avoid notes.
-- Keep the core/colour alternation.
-- Minimise per-slot pitch/register jump from the previous step's layout so
-  common progressions (ii-V-I) voice-lead smoothly.
-- Don't fill every slot with chord tones when useful tensions exist -- colour
-  slots are reserved for colour and only borrow chord tones as a fallback.
-- Slot voicing de-duplication (LayoutPolicy.dedupe_voicing): if two slots resolve
-  to the exact same MIDI note, nudge the lower-priority slot by whole octaves so
-  every key sounds a distinct, usable note. This is a voicing/playability pass --
-  it never changes a pitch class, a role, or anything harmonic.
+- Initial step (no previous layout): lay each line out low->high from a C anchor
+  (InitialLayoutOrder ``ANCHOR_LOW_TO_HIGH``).
+- Subsequent steps: minimise per-slot register jump from the previous layout so
+  ii-V-I and similar progressions voice-lead smoothly.
+- Don't fill every key with chord tones when useful tensions exist -- the colour
+  line is reserved for colour and only borrows a chord tone when a 7-note scale
+  leaves it a note short.
+- Colour-fill voice leading: a borrowed chord tone is placed as the nearest
+  ascending continuation above the colour line (an upper-octave extension, e.g.
+  ``C+1``), never as a dead duplicate of the note its core slot already plays.
+- Octaves: the same pitch class at different octaves is fine; an *exact* same
+  MIDI note on two keys is not. The de-dup pass (``dedupe_voicing``) is the
+  safety net -- it moves the lower-priority (colour) slot by whole octaves and
+  never touches a pitch class, role, or anything harmonic.
 
 The builder is deterministic (stable sorts + lexicographic permutation
-tie-breaks) so it is easy to test.
+tie-breaks).
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from enum import Enum
 from itertools import permutations
 
 from ..core.pitch import nearest_midi_note, note_name
 from .analysis import HarmonicStep, PitchCandidate, PitchRole
-from .performance import Layout, Slot, SlotKind
+from .performance import Layout, LayoutOrientation, Slot, SlotKind
 
 _ROLE_TO_KIND = {
     PitchRole.CORE: SlotKind.CORE,
@@ -41,6 +52,17 @@ _ROLE_TO_KIND = {
     PitchRole.APPROACH: SlotKind.APPROACH,
     PitchRole.AVOID: SlotKind.COLOR,
 }
+
+
+class InitialLayoutOrder(Enum):
+    """How the very first step (no previous layout) orders each line."""
+
+    ANCHOR_LOW_TO_HIGH = "anchor_low_to_high"  # default: rise from a C anchor
+    # Reserved for future R&D; not yet implemented.
+    PITCH_CLASS_ASCENDING = "pitch_class_ascending"
+    ROOT_FIRST = "root_first"
+    GUIDE_TONE_FIRST = "guide_tone_first"
+    CUSTOM = "custom"
 
 
 @dataclass(frozen=True)
@@ -59,6 +81,9 @@ class LayoutPolicy:
     suppressed_roles_normal: frozenset = field(default_factory=lambda: frozenset({PitchRole.AVOID}))
     anchor_midi: int = 60  # register the first step centres on
 
+    orientation: LayoutOrientation = LayoutOrientation.TWO_ROW_CORE_COLOR
+    initial_order: InitialLayoutOrder = InitialLayoutOrder.ANCHOR_LOW_TO_HIGH
+
     # Slot voicing de-duplication: split exact duplicate MIDI notes by octave.
     dedupe_voicing: bool = True
     voicing_low: int = 36  # nudges stay within a playable register window
@@ -70,7 +95,7 @@ def _sort_candidates(cands: list[PitchCandidate]) -> list[PitchCandidate]:
     return sorted(cands, key=lambda c: (-c.weight, -c.stability, c.pitch_class))
 
 
-def _fill(primary: list[PitchCandidate], fallback: list[PitchCandidate], n: int) -> list[PitchCandidate]:
+def _take(primary: list[PitchCandidate], n: int, fallback: list[PitchCandidate]) -> list[PitchCandidate]:
     """Return exactly ``n`` candidates: primary first, then fallback, then pad."""
     chosen: list[PitchCandidate] = list(primary[:n])
     for c in fallback:
@@ -86,31 +111,85 @@ def _fill(primary: list[PitchCandidate], fallback: list[PitchCandidate], n: int)
     return chosen[:n]
 
 
-def _assign(
-    cands: list[PitchCandidate],
-    prev_slots: list[Slot] | None,
+def _order_from_anchor(cands: list[PitchCandidate], anchor: int) -> list[PitchCandidate]:
+    """Order candidates so a line rises from the anchor pitch class."""
+    anchor_pc = anchor % 12
+    return sorted(cands, key=lambda c: ((c.pitch_class - anchor_pc) % 12, c.pitch_class))
+
+
+def _ascending_line(pitch_classes: list[int], start: int) -> list[int]:
+    """Strictly ascending MIDI notes for the given pitch classes, from ``start``."""
+    notes: list[int] = []
+    current = start
+    for pc in pitch_classes:
+        note = current + ((pc - current) % 12)
+        if notes and note <= notes[-1]:
+            note += 12
+        notes.append(note)
+        current = note
+    return notes
+
+
+def _assign_anchor_line(cands: list[PitchCandidate], anchor: int) -> list[tuple[PitchCandidate, int]]:
+    """Initial-step placement: a line rising low->high from the anchor."""
+    ordered = _order_from_anchor(cands, anchor)
+    notes = _ascending_line([c.pitch_class for c in ordered], anchor)
+    return list(zip(ordered, notes))
+
+
+def _assign_color_anchor(
+    color_real: list[PitchCandidate],
+    borrow_pool: list[PitchCandidate],
+    n_total: int,
     anchor: int,
+    used_notes: set[int],
 ) -> list[tuple[PitchCandidate, int]]:
-    """Map candidates to a group's slots and pick each one's MIDI octave.
+    """Colour line for the initial step: real colour tones rise from the anchor,
+    then any shortfall is filled by the core tone whose nearest *ascending*
+    continuation sits just above the line (an upper-octave extension), avoiding
+    any exact-duplicate MIDI note already in use."""
+    placed = _assign_anchor_line(color_real[:n_total], anchor)
+    used = set(used_notes) | {note for _c, note in placed}
+    top = placed[-1][1] if placed else anchor - 1
 
-    With a previous layout, choose the candidate->slot assignment that minimises
-    total per-slot register jump (brute force over <=24 permutations). Without
-    one, lay candidates out in ascending pitch order around the anchor.
-    """
+    while len(placed) < n_total and borrow_pool:
+        best: tuple[tuple[int, int], PitchCandidate, int] | None = None
+        for cand in borrow_pool:
+            note = top + ((cand.pitch_class - top) % 12)
+            if note <= top:
+                note += 12
+            while note in used:
+                note += 12
+            key = (note - top, cand.pitch_class)
+            if best is None or key < best[0]:
+                best = (key, cand, note)
+        _key, cand, note = best
+        placed.append((cand, note))
+        used.add(note)
+        top = note
+
+    while len(placed) < n_total and placed:  # degenerate: nothing to borrow
+        cand, note = placed[-1]
+        note += 12
+        placed.append((cand, note))
+    return placed
+
+
+def _assign_voice_led(
+    cands: list[PitchCandidate], prev_slots: list[Slot]
+) -> list[tuple[PitchCandidate, int]]:
+    """Subsequent-step placement: assign candidates to the line's slots so total
+    per-slot register jump from the previous layout is minimised (<=24 perms)."""
     n = len(cands)
-    if prev_slots and len(prev_slots) == n:
-        anchors = [s.preferred_midi for s in prev_slots]
-        best: tuple[int, tuple[int, ...], list[int]] | None = None
-        for perm in permutations(range(n)):
-            midis = [nearest_midi_note(cands[perm[i]].pitch_class, anchors[i]) for i in range(n)]
-            total = sum(abs(midis[i] - anchors[i]) for i in range(n))
-            if best is None or total < best[0]:
-                best = (total, perm, midis)
-        perm, midis = best[1], best[2]
-        return [(cands[perm[i]], midis[i]) for i in range(n)]
-
-    order = sorted(range(n), key=lambda i: cands[i].pitch_class)
-    return [(cands[i], nearest_midi_note(cands[i].pitch_class, anchor)) for i in order]
+    anchors = [prev_slots[i % len(prev_slots)].preferred_midi for i in range(n)]
+    best: tuple[int, tuple[int, ...], list[int]] | None = None
+    for perm in permutations(range(n)):
+        midis = [nearest_midi_note(cands[perm[i]].pitch_class, anchors[i]) for i in range(n)]
+        total = sum(abs(midis[i] - anchors[i]) for i in range(n))
+        if best is None or total < best[0]:
+            best = (total, perm, midis)
+    perm, midis = best[1], best[2]
+    return [(cands[perm[i]], midis[i]) for i in range(n)]
 
 
 def build_layout(
@@ -126,22 +205,25 @@ def build_layout(
     core_pool = _sort_candidates([c for c in usable if c.role in policy.core_roles])
     color_pool = _sort_candidates([c for c in usable if c.role in policy.color_roles])
 
-    # Reserve colour slots for colour: core borrows from colour only if short,
-    # and colour borrows from core only if short.
     n_core = len(policy.core_slot_indices)
     n_color = len(policy.color_slot_indices)
-    core_sel = _fill(core_pool, color_pool, n_core)
-    color_sel = _fill(color_pool, core_pool, n_color)
+    core_sel = _take(core_pool, n_core, fallback=color_pool)
+    color_real = color_pool[:n_color]
+    n_borrow = n_color - len(color_real)
 
-    prev_core = (
-        [previous_layout.slots[i] for i in policy.core_slot_indices] if previous_layout else None
-    )
-    prev_color = (
-        [previous_layout.slots[i] for i in policy.color_slot_indices] if previous_layout else None
-    )
-
-    core_assigned = _assign(core_sel, prev_core, policy.anchor_midi)
-    color_assigned = _assign(color_sel, prev_color, policy.anchor_midi)
+    if previous_layout is None:
+        core_assigned = _assign_anchor_line(core_sel, policy.anchor_midi)
+        core_notes = {note for _c, note in core_assigned}
+        color_assigned = _assign_color_anchor(
+            color_real, core_pool, n_color, policy.anchor_midi, core_notes
+        )
+    else:
+        borrowed = _take(core_pool, n_borrow, fallback=color_pool) if n_borrow else []
+        color_sel = _take(color_real + borrowed, n_color, fallback=core_pool)
+        prev_core = [previous_layout.slots[i] for i in policy.core_slot_indices]
+        prev_color = [previous_layout.slots[i] for i in policy.color_slot_indices]
+        core_assigned = _assign_voice_led(core_sel, prev_core)
+        color_assigned = _assign_voice_led(color_sel, prev_color)
 
     assigned: list[tuple[int, PitchCandidate, int]] = []
     for slot_index, (cand, midi) in zip(policy.core_slot_indices, core_assigned):
@@ -157,7 +239,7 @@ def build_layout(
     for slot_index, cand, _midi in assigned:
         slots[slot_index] = _make_slot(slot_index, cand, midi_by_slot[slot_index])
 
-    return Layout(slots=tuple(slots))  # type: ignore[arg-type]
+    return Layout(slots=tuple(slots), orientation=policy.orientation)  # type: ignore[arg-type]
 
 
 def _slot_priority(slot_index: int, cand: PitchCandidate) -> tuple:

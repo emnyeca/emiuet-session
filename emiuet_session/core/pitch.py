@@ -42,3 +42,18 @@ def nearest_midi_note(pc: int, anchor: int) -> int:
 def clamp_midi(note: int, lo: int = 0, hi: int = 127) -> int:
     """Clamp a MIDI note into the valid 0..127 range (or a tighter window)."""
     return max(lo, min(hi, note))
+
+
+def note_label_octave(midi: int, reference: int = MIDDLE_C, *, prefer_flat: bool = True) -> str:
+    """Note name with an octave marker relative to ``reference``.
+
+    Used by the two-row display so an octave-extended fill note reads as e.g.
+    ``C+1`` (one octave above the reference register) rather than a bare ``C``.
+    """
+    name = note_name(midi % 12, prefer_flat=prefer_flat)
+    octaves = midi // 12 - reference // 12
+    if octaves > 0:
+        return f"{name}+{octaves}"
+    if octaves < 0:
+        return f"{name}{octaves}"
+    return name
