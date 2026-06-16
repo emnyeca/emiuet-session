@@ -40,3 +40,6 @@ fabrication/
 
 # Workspace
 *.code-workspace
+
+# Vender Manuals
+*docs/vender
