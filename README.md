@@ -7,12 +7,23 @@ Emiuet Session is a standalone improvisation instrument designed for jazz sessio
 
 Prototype phase.
 
-Current implementation focus: Phase 1 Teensy breadboard prototype.
+Two parallel tracks:
+
+**Phase 1 — Teensy breadboard prototype** (hardware input + MIDI output bring-up)
 
 - Firmware: `platformio.ini`, `src/`, `include/`
 - Breadboard wiring: `docs/phase1_breadboard.md`
 - Experiment log: `docs/experiments/phase1_results.md`
 - KiCad testboard project: `kicad/phase1-testboard/`
+
+**R&D core — performance model & playable engine** (portable Python, GUI/MIDI-lib free)
+
+- Engine + models: `emiuet_session/` · Desktop debug harness: `apps/desktop_debug/`
+- Tests: `pytest` from the repo root · Demo: `python -m apps.desktop_debug --demo`
+- Design docs: `docs/emiuet_session_architecture.md`,
+  `docs/emiuet_performance_model.md`, `docs/segment_policy.md`,
+  `docs/rd_core_desktop_harness.md`
+- The C++ (Teensy/ESP32) port is a later phase that mirrors this structure.
 
 ## Documentation
 

@@ -1,0 +1,10 @@
+[project]
+name = "emiuet-session-rd"
+version = "0.1.0"
+description = "Emiuet Session R&D core: portable chord-aware improvisation engine"
+requires-python = ">=3.10"
+
+[tool.pytest.ini_options]
+# Run pytest from the repo root; the package and apps are importable directly.
+pythonpath = ["."]
+testpaths = ["tests"]

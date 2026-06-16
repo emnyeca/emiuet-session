@@ -1,0 +1,68 @@
+"""Input/Output frames -- the single boundary between adapters and the engine.
+
+The engine is driven one frame at a time::
+
+    output = core.process(input_frame)
+
+``InputFrame`` carries discrete commands collected since the last frame plus the
+current time. The engine keeps held-key state internally, so adapters only need
+to report press/release edges. ``OutputFrame`` carries the abstract MIDI events
+to emit and a ``DisplayState`` snapshot for the OLED/GUI.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+
+from .approach import ApproachDirection
+from .display import DisplayState
+from .midi import MidiEvent
+from .profile import PerformanceProfile
+from .register_shift import RegisterShiftMode
+
+
+class SegmentCommand:
+    NEXT = "next"
+    PREV = "prev"
+
+
+class RegisterCommand:
+    UP = "up"
+    DOWN = "down"
+    RESET = "reset"
+
+
+@dataclass
+class InputFrame:
+    """Commands and time delta for one engine tick."""
+
+    now_ms: float = 0.0
+
+    # Performance keys (slot indices 0..7), as edges since the last frame.
+    key_presses: tuple[int, ...] = ()
+    key_releases: tuple[int, ...] = ()
+
+    # Register shift.
+    register_command: str | None = None  # RegisterCommand.*
+    register_mode: RegisterShiftMode | None = None
+    register_custom_step: int | None = None
+
+    # Approach modifiers (edges).
+    approach_press: ApproachDirection | None = None
+    approach_release: ApproachDirection | None = None
+
+    # Navigation.
+    segment_command: str | None = None  # SegmentCommand.*
+
+    # Tempo / profile.
+    tempo_bpm: float | None = None
+    profile_command: PerformanceProfile | str | None = None  # profile, or "cycle"
+
+    # Safety.
+    panic: bool = False
+
+
+@dataclass
+class OutputFrame:
+    midi_events: list[MidiEvent] = field(default_factory=list)
+    display: DisplayState | None = None
