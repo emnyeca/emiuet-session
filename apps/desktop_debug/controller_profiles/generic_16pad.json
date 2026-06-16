@@ -1,0 +1,24 @@
+{
+  "name": "Generic 16-pad test profile (8 Note pads + 8 CC buttons)",
+  "midi_channel": 1,
+  "note_mappings": {
+    "36": { "type": "slot", "slot": 0 },
+    "37": { "type": "slot", "slot": 2 },
+    "38": { "type": "slot", "slot": 4 },
+    "39": { "type": "slot", "slot": 6 },
+    "40": { "type": "slot", "slot": 1 },
+    "41": { "type": "slot", "slot": 3 },
+    "42": { "type": "slot", "slot": 5 },
+    "43": { "type": "slot", "slot": 7 }
+  },
+  "control_mappings": {
+    "20": { "type": "command", "command": "previous_segment" },
+    "21": { "type": "command", "command": "next_segment" },
+    "22": { "type": "command", "command": "register_down" },
+    "23": { "type": "command", "command": "register_up" },
+    "24": { "type": "command", "command": "approach_minus" },
+    "25": { "type": "command", "command": "approach_plus" },
+    "26": { "type": "command", "command": "panic" },
+    "27": { "type": "command", "command": "profile_cycle" }
+  }
+}

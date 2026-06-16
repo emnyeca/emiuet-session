@@ -20,9 +20,11 @@ Two parallel tracks:
 
 - Engine + models: `emiuet_session/` · Desktop debug harness: `apps/desktop_debug/`
 - Tests: `pytest` from the repo root · Demo: `python -m apps.desktop_debug --demo`
+- Play it from a MIDI controller (optional `mido`): `python -m apps.desktop_debug.midi_controller_harness --self-test`
 - Design docs: `docs/emiuet_session_architecture.md`,
   `docs/emiuet_performance_model.md`, `docs/segment_policy.md`,
-  `docs/rd_core_desktop_harness.md`
+  `docs/rd_core_desktop_harness.md`, `docs/midi_controller_testing.md`,
+  `docs/ccp16_mapping.md`
 - The C++ (Teensy/ESP32) port is a later phase that mirrors this structure.
 
 ## Documentation
