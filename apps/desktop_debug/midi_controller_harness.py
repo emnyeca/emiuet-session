@@ -29,6 +29,7 @@ import time
 from emiuet_session.core.frames import InputFrame
 from emiuet_session.core.mode import PerformanceMode
 from emiuet_session.core.timeline import AheadTargetPolicy, CompiledTimeline, TimelineBasis
+from emiuet_session.core.timeline_io import load_compiled_timeline
 from emiuet_session.core.transport import AdvanceMode, TransportEvent
 from emiuet_session.fixtures import sample_compiled_timeline, sample_performance_model
 from emiuet_session.runtime import EmiuetCore
@@ -144,6 +145,9 @@ def _autofollow_script() -> list[tuple[str, str, InputFrame]]:
         ("pad lpc_up (ahead held)", "lpc_up", InputFrame(solo_gesture=SoloGesture.LPC_UP)),
         ("F8 x24 -> arrive next step", "clock x24", InputFrame(clock_pulses=24)),
         ("pad resolve (new chord)", "resolve", InputFrame(solo_gesture=SoloGesture.RESOLVE)),
+        ("pad contrast_mod hold", "contrast_mod press", InputFrame(contrast_mod_press=True)),
+        ("pad core_up (AIM=contrast)", "core_up", InputFrame(solo_gesture=SoloGesture.CORE_UP)),
+        ("release contrast_mod", "contrast_mod release", InputFrame(contrast_mod_release=True)),
         ("FC Stop", "stop", InputFrame(transport_event=TransportEvent.STOP)),
     ]
 
@@ -165,11 +169,16 @@ def _self_test(console, mapper, adapter, mode, advance_mode) -> int:
 
 
 def build_console(
-    mode, advance_mode, ahead_policy, orientation, timeline_basis="digitone-step"
+    mode, advance_mode, ahead_policy, orientation, timeline_basis="digitone-step",
+    timeline_path=None,
 ) -> DebugConsole:
     timeline = None
     if advance_mode is AdvanceMode.AUTO_FOLLOW:
-        timeline = sample_compiled_timeline()
+        # A real EUB Changes export (--timeline) takes precedence; otherwise use the
+        # built-in sample compiled timeline.
+        timeline = (
+            load_compiled_timeline(timeline_path) if timeline_path else sample_compiled_timeline()
+        )
         # Honour --timeline-basis so the warning path is observable on hardware:
         # an original-song basis must actually produce the warning, not silently
         # behave like digitone-step.
@@ -189,9 +198,11 @@ def build_console(
 
 def run(
     midi_in, profile, orientation, adapter, send_all_notes_off, mode, advance_mode,
-    ahead_policy, timeline_basis,
+    ahead_policy, timeline_basis, timeline_path,
 ) -> int:
-    console = build_console(mode, advance_mode, ahead_policy, orientation, timeline_basis)
+    console = build_console(
+        mode, advance_mode, ahead_policy, orientation, timeline_basis, timeline_path
+    )
     mapper = MidiInputMapper(profile)
     port = open_input(midi_in)
     start = time.monotonic()
@@ -299,6 +310,9 @@ def main(argv: list[str] | None = None) -> int:
         help="(auto-follow) timeline basis; auto-follow expects digitone-step",
     )
     parser.add_argument(
+        "--timeline", help="(auto-follow) path to a compiled timeline JSON from EUB Changes",
+    )
+    parser.add_argument(
         "--ahead-target", default="next-distinct-chord",
         choices=["next-distinct-chord", "next-step"],
         help="Harmonic Ahead target policy",
@@ -362,7 +376,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Mode: {args.mode}  Advance: {args.advance_mode}  |  Profile: {profile.name}")
         print(f"Output: {adapter.name if adapter else '(none, log only)'}\n")
         console = build_console(
-            mode, advance_mode, ahead_policy, args.layout_orientation, args.timeline_basis
+            mode, advance_mode, ahead_policy, args.layout_orientation, args.timeline_basis,
+            args.timeline,
         )
         rc = _self_test(console, MidiInputMapper(profile), adapter, mode, advance_mode)
         _shutdown(console, adapter, args.send_all_notes_off_on_exit)
@@ -385,7 +400,7 @@ def main(argv: list[str] | None = None) -> int:
         return run(
             args.midi_in, profile, args.layout_orientation, adapter,
             args.send_all_notes_off_on_exit, mode, advance_mode, ahead_policy,
-            args.timeline_basis,
+            args.timeline_basis, args.timeline,
         )
     except RuntimeError as exc:
         print(exc, file=sys.stderr)

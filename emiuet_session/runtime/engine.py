@@ -89,6 +89,7 @@ class EmiuetCore:
         self.transport_state = TransportState.STOPPED
         self._ticks = 0  # MIDI clock playhead, advanced only while RUNNING
         self.harmonic_ahead = HarmonicAhead()
+        self.contrast_mod = False  # hold: read the step through its contrast context
 
         self.register = RegisterShift()
         self.approach = ApproachState()
@@ -144,19 +145,33 @@ class EmiuetCore:
         return None
 
     def current_context(self) -> ChordContext:
-        """Current chord context: from the compiled timeline in Auto Follow,
-        otherwise from the PerformanceModel's current step (Manual)."""
+        """NOW: the timeline-current chord's default (progression) context, or the
+        PerformanceModel's current step (Manual)."""
         compiled = self.current_compiled_step()
         if compiled is not None:
             return compiled.chord_context
         step = self.current_step()
         return ChordContext(step.chord, step.core_pcs, step.lpc, step.scale_collection)
 
+    def _resolved_step(self):
+        """Which compiled step the resolver reads: the Harmonic Ahead target when
+        armed, otherwise the current step. None in Manual mode."""
+        if self.harmonic_ahead.active and self.harmonic_ahead.target_step is not None:
+            return self.harmonic_ahead.target_step
+        return self.current_compiled_step()
+
     def effective_context(self) -> ChordContext:
-        """What the Solo resolver actually looks at (Harmonic Ahead target if armed)."""
-        if self.harmonic_ahead.active and self.harmonic_ahead.target_context is not None:
-            return self.harmonic_ahead.target_context
-        return self.current_context()
+        """AIM: what the Solo resolver actually looks at.
+
+        Harmonic Ahead chooses *which step*; Contrast MOD chooses *which context*
+        of that step (contrast when held and available, else progression).
+        """
+        step = self._resolved_step()
+        if step is None:
+            return self.current_context()  # Manual: no contrast contexts
+        if self.contrast_mod and step.has_context(step.mod_context_role):
+            return step.context_for(step.mod_context_role)
+        return step.context_for(step.default_context_role) or step.chord_context
 
     def next_context_chord(self) -> str:
         compiled = self.current_compiled_step()
@@ -321,6 +336,11 @@ class EmiuetCore:
             self.harmonic_ahead.clear()
             self.pending.reset()
             self.cursor.reset()
+        # Contrast MOD is a momentary hold (press engages, release releases).
+        if frame.contrast_mod_press:
+            self.contrast_mod = True
+        if frame.contrast_mod_release:
+            self.contrast_mod = False
 
     def _arm_ahead(self, direction: int) -> None:
         # AHEAD_ACTIVE 中は ignore（連打で 2 つ先へ進まない）。timeline が要る。
@@ -339,8 +359,7 @@ class EmiuetCore:
             target = self.timeline.find_next_distinct_chord(current)
         if target is not None:
             self.harmonic_ahead.active = True
-            self.harmonic_ahead.target_context = target.chord_context
-            self.harmonic_ahead.target_step_id = target.id
+            self.harmonic_ahead.target_step = target
 
     def _update_ahead_arrival(self) -> None:
         if not self.harmonic_ahead.active:
@@ -444,6 +463,7 @@ class EmiuetCore:
         layout = self.current_layout()
         now = self.current_context()
         aim = self.effective_context()
+        aim_label = aim.display or aim.chord
         return DisplayState(
             current_chord=now.chord,
             next_chord=self.next_context_chord(),
@@ -473,9 +493,10 @@ class EmiuetCore:
             advance_mode=self.advance_mode.value,
             transport=self.transport_state.value,
             ticks=self._view_ticks(),
-            now_chord=now.chord,
-            aim_chord=aim.chord,
+            now_chord=now.display or now.chord,
+            aim_chord=aim_label,
             ahead_active=self.harmonic_ahead.active,
+            contrast_active=self.contrast_mod,
             warning=self._timeline_warning(),
         )
 

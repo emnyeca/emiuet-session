@@ -79,6 +79,10 @@ class InputFrame:
     clear_ahead_pending: bool = False  # clear Harmonic Ahead + pending modifiers
     resync: bool = False  # clear ahead + pending + reset the solo cursor
 
+    # Contrast MOD (hold): view the current/ahead step through its contrast context.
+    contrast_mod_press: bool = False
+    contrast_mod_release: bool = False
+
     # Safety.
     panic: bool = False
 

@@ -52,8 +52,9 @@ class DisplayState:
     transport: str = "stopped"
     ticks: int = 0
     now_chord: str = ""  # timeline-current chord (NOW)
-    aim_chord: str = ""  # chord the resolver looks at (AIM; == ahead target when armed)
+    aim_chord: str = ""  # chord/context the resolver looks at (AIM)
     ahead_active: bool = False
+    contrast_active: bool = False  # Contrast MOD held
     warning: str = ""
 
     def header_lines(self) -> list[str]:
