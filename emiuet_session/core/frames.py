@@ -20,6 +20,7 @@ from .midi import MidiEvent
 from .profile import PerformanceProfile
 from .register_shift import RegisterShiftMode
 from .solo import SoloGesture
+from .transport import TransportEvent
 
 
 class SegmentCommand:
@@ -67,6 +68,16 @@ class InputFrame:
     pending_skip: bool = False
     clear_pending_reset_cursor: bool = False
     restart_head: bool = False
+
+    # Transport / Auto Follow.
+    transport_event: TransportEvent | None = None  # START / CONTINUE / STOP
+    clock_pulses: int = 0  # number of F8 ticks to consume this frame
+
+    # Harmonic Ahead.
+    harmonic_ahead: bool = False  # arm "ahead" to the next distinct chord
+    experimental_previous_context: bool = False  # arm to the previous distinct chord
+    clear_ahead_pending: bool = False  # clear Harmonic Ahead + pending modifiers
+    resync: bool = False  # clear ahead + pending + reset the solo cursor
 
     # Safety.
     panic: bool = False

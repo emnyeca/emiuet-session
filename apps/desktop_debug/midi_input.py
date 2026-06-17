@@ -22,6 +22,7 @@ from pathlib import Path
 from emiuet_session.core.approach import ApproachDirection
 from emiuet_session.core.frames import InputFrame, RegisterCommand, SegmentCommand
 from emiuet_session.core.solo import SoloGesture
+from emiuet_session.core.transport import TransportEvent
 
 PROFILES_DIR = Path(__file__).parent / "controller_profiles"
 
@@ -50,6 +51,11 @@ _TRIGGER_COMMANDS = {
     "pending_octave_down",
     "clear_pending_reset_cursor",
     "restart_head",
+    # Auto Follow / Harmonic Ahead controls.
+    "harmonic_ahead",
+    "experimental_previous_context",
+    "clear_ahead_pending",
+    "resync",
 }
 COMMAND_NAMES = _TRIGGER_COMMANDS | set(_APPROACH)
 GESTURE_NAMES = {g.value for g in SoloGesture}
@@ -255,7 +261,36 @@ def _trigger_frame(command: str) -> InputFrame:
         return InputFrame(clear_pending_reset_cursor=True)
     if command == "restart_head":
         return InputFrame(restart_head=True)
+    if command == "harmonic_ahead":
+        return InputFrame(harmonic_ahead=True)
+    if command == "experimental_previous_context":
+        return InputFrame(experimental_previous_context=True)
+    if command == "clear_ahead_pending":
+        return InputFrame(clear_ahead_pending=True)
+    if command == "resync":
+        return InputFrame(resync=True)
     raise ProfileError(f"unhandled command {command!r}")  # unreachable if validated
+
+
+_REALTIME_TRANSPORT = {
+    "start": TransportEvent.START,
+    "continue": TransportEvent.CONTINUE,
+    "stop": TransportEvent.STOP,
+}
+
+
+def realtime_input_frame(msg_type: str) -> InputFrame | None:
+    """Map a MIDI realtime message type to a transport InputFrame.
+
+    Realtime (F8/FA/FB/FC) is fixed, not profile-driven. Returns None for any
+    non-transport message type.
+    """
+    if msg_type == "clock":
+        return InputFrame(clock_pulses=1)
+    event = _REALTIME_TRANSPORT.get(msg_type)
+    if event is not None:
+        return InputFrame(transport_event=event)
+    return None
 
 
 # --- real MIDI port helpers (mido imported lazily) -------------------------
