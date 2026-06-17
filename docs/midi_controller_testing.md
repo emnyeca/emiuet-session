@@ -39,9 +39,7 @@ python -m apps.desktop_debug.midi_controller_harness --list-ports
 ## ハーネスの起動
 
 ```sh
-python -m apps.desktop_debug.midi_controller_harness \
-  --midi-in "MIDI PAD-01" \
-  --profile apps/desktop_debug/controller_profiles/ccp16.json
+  python -m apps.desktop_debug.midi_controller_harness --midi-in "H12MIDI-Pro 1" --profile apps/desktop_debug/controller_profiles/ccp16.json
 ```
 
 - `--midi-in` は、正確なポート名・大文字小文字を無視した部分一致・`--list-ports`
