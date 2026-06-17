@@ -27,17 +27,30 @@ class AheadTargetPolicy(Enum):
 
 @dataclass(frozen=True)
 class ChordContext:
-    """Solo resolver が参照する和声文脈。"""
+    """Solo resolver が参照する和声文脈。
+
+    ``core_pcs`` は resolver_core（Resolve / Core Up/Down が向かう安定音）、``lpc`` は
+    LPC Up/Down が辿る音。``hard_context`` は EUB Changes 内部の制約で、resolver には
+    使わず debug / display 用。
+    """
 
     chord: str
-    core_pcs: tuple[int, ...]  # chord tones (core pitch classes)
+    core_pcs: tuple[int, ...]  # resolver_core (安定音)
     lpc: tuple[int, ...]  # local pitch collection
-    scale_collection: str = ""
+    scale_collection: str = ""  # scale_name
+    role: str = "progression"  # progression / contrast
+    display: str = ""  # AIM 表示用（例 "G7 HW", "C Lyd"）
+    scale_root: str = ""
+    hard_context: tuple[int, ...] = ()  # 内部制約（resolver には使わない）
 
 
 @dataclass(frozen=True)
 class CompiledHarmonicStep:
-    """Digitone Step 進行に合わせて compile された harmonic step（tick 範囲つき）。"""
+    """Digitone Step 進行に合わせて compile された harmonic step（tick 範囲つき）。
+
+    ``chord_context`` は default（progression）context。``contexts`` に role 別の
+    context（progression / contrast）を持ち、Contrast MOD で切り替える。
+    """
 
     id: str
     start_tick: int
@@ -45,6 +58,19 @@ class CompiledHarmonicStep:
     chord_context: ChordContext
     source_step_index: int | None = None
     source_label: str | None = None
+    contexts: dict = field(default_factory=dict)  # role -> ChordContext
+    default_context_role: str = "progression"
+    mod_context_role: str = "contrast"
+
+    def context_for(self, role: str) -> ChordContext | None:
+        if role in self.contexts:
+            return self.contexts[role]
+        if role == self.default_context_role:
+            return self.chord_context  # back-compat when contexts dict is empty
+        return None
+
+    def has_context(self, role: str) -> bool:
+        return self.context_for(role) is not None
 
 
 @dataclass
@@ -104,14 +130,20 @@ class CompiledTimeline:
 
 @dataclass
 class HarmonicAhead:
-    """次コード先取り（hold_until_arrival）の状態。"""
+    """次コード先取り（hold_until_arrival）の状態。
+
+    Harmonic Ahead は「どの step を見るか」を変える（target_step）。Contrast MOD は
+    「その step をどの context で見るか」を変える。両者は別物。
+    """
 
     policy: AheadTargetPolicy = AheadTargetPolicy.NEXT_DISTINCT_CHORD
     active: bool = False
-    target_context: ChordContext | None = None
-    target_step_id: str | None = None
+    target_step: CompiledHarmonicStep | None = None
+
+    @property
+    def target_step_id(self) -> str | None:
+        return self.target_step.id if self.target_step is not None else None
 
     def clear(self) -> None:
         self.active = False
-        self.target_context = None
-        self.target_step_id = None
+        self.target_step = None

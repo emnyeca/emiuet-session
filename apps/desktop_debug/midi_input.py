@@ -57,7 +57,9 @@ _TRIGGER_COMMANDS = {
     "clear_ahead_pending",
     "resync",
 }
-COMMAND_NAMES = _TRIGGER_COMMANDS | set(_APPROACH)
+# Hold commands: press engages, release releases (like approach).
+_HOLD_COMMANDS = {"contrast_mod"}
+COMMAND_NAMES = _TRIGGER_COMMANDS | set(_APPROACH) | _HOLD_COMMANDS
 GESTURE_NAMES = {g.value for g in SoloGesture}
 
 # A CC button counts as pressed at or above this value (MIDI half-way).
@@ -229,6 +231,11 @@ class MidiInputMapper:
             if is_press:
                 return MappedEvent(raw, f"{command} press", InputFrame(approach_press=direction))
             return MappedEvent(raw, f"{command} release", InputFrame(approach_release=direction))
+
+        if command == "contrast_mod":
+            if is_press:
+                return MappedEvent(raw, "contrast_mod press", InputFrame(contrast_mod_press=True))
+            return MappedEvent(raw, "contrast_mod release", InputFrame(contrast_mod_release=True))
 
         # One-shot trigger commands fire on press only.
         if not is_press:

@@ -110,11 +110,17 @@ class DebugConsole:
 
         last = d.last_output_note
         last_label = f"{note_name(last % 12)}({last})" if last is not None else "-"
-        ahead = "  AHEAD" if d.ahead_active else ""
+        flags = []
+        if d.ahead_active:
+            flags.append("AHEAD")
+        if d.contrast_active:
+            flags.append("CON")
+        flag_text = ("  " + " ".join(flags)) if flags else ""
         lines = [
-            f"  AIM  {d.aim_chord}{ahead}",
+            f"  AIM  {d.aim_chord}{flag_text}",
             f"  NOW  {d.now_chord}   t={d.ticks}",
             f"  NEXT {d.next_chord}",
+            f"  MOD  {'CON' if d.contrast_active else '-'}",
             f"  TR   {d.transport}  {d.advance_mode}  SOLO",
             f"  last: {last_label}  gesture: {d.last_gesture or '-'}  dir: {d.phrase_direction}",
             f"  pending: octave={d.pending_octave:+d} skip={d.pending_skip}",
