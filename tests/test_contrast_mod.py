@@ -89,6 +89,36 @@ def test_contrast_falls_back_to_progression_when_absent():
     assert c.effective_context().role == "progression"
 
 
+def test_transport_start_clears_contrast_mod():
+    c = started_core()
+    c.process(InputFrame(contrast_mod_press=True))
+    c.process(InputFrame(transport_event=TransportEvent.START))
+    assert not c.contrast_mod
+    assert c.effective_context().role == "progression"
+
+
+def test_transport_stop_clears_contrast_mod():
+    c = started_core()
+    c.process(InputFrame(contrast_mod_press=True))
+    c.process(InputFrame(transport_event=TransportEvent.STOP))
+    assert not c.contrast_mod
+
+
+def test_transport_continue_clears_contrast_mod():
+    c = started_core()
+    c.process(InputFrame(contrast_mod_press=True))
+    c.process(InputFrame(transport_event=TransportEvent.CONTINUE))
+    assert not c.contrast_mod
+
+
+def test_panic_clears_contrast_mod():
+    c = started_core()
+    c.process(InputFrame(contrast_mod_press=True))
+    c.process(InputFrame(panic=True))
+    assert not c.contrast_mod
+    assert c.effective_context().role == "progression"
+
+
 def test_manual_mode_has_no_contrast():
     c = EmiuetCore(sample_performance_model(), mode=PerformanceMode.SOLO)  # manual
     c.process(InputFrame(contrast_mod_press=True))

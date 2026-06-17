@@ -215,6 +215,7 @@ class EmiuetCore:
         if frame.panic:
             events.extend(self._panic())
             self.harmonic_ahead.clear()
+            self.contrast_mod = False
 
         if self.advance_mode is AdvanceMode.MANUAL:
             self._advance_time(frame)
@@ -308,12 +309,14 @@ class EmiuetCore:
             self.harmonic_ahead.clear()
             self.pending.reset()
             self.cursor.reset()
+            self.contrast_mod = False
             return self._all_notes_off()
         if event is TransportEvent.CONTINUE:
             # 続き再生: playhead は reset しない。事故防止で transient は clear。
             self.transport_state = TransportState.RUNNING
             self.harmonic_ahead.clear()
             self.pending.reset()
+            self.contrast_mod = False
             return []
         if event is TransportEvent.STOP:
             # 停止。notes/pending/ahead は clear するが、transport playhead は維持する
@@ -321,6 +324,7 @@ class EmiuetCore:
             self.transport_state = TransportState.STOPPED
             self.harmonic_ahead.clear()
             self.pending.reset()
+            self.contrast_mod = False
             return self._all_notes_off()
         return []
 
