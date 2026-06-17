@@ -47,6 +47,8 @@ python -m apps.desktop_debug.midi_controller_harness --list-ports
 - `--layout-orientation two-row|alternating` で表示を選びます。
 - `--self-test` は synthetic message を流すモードで、ハードウェア不要です。
   mapping と engine 出力の確認、profile の動作確認に使えます。
+- `--midi-out` を付けると、engine の出力を実 MIDI OUT へ送って外部音源を鳴らせます
+  （省略時はログのみ）。詳細は `docs/midi_output_testing.md` 参照。
 
 ## ログの読み方
 

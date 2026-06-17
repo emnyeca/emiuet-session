@@ -240,24 +240,27 @@ def list_input_ports() -> list[str]:
     return list(_import_mido().get_input_names())
 
 
-def open_input(name_or_index: str):
-    """Open a MIDI input by exact name, case-insensitive substring, or index."""
-    mido = _import_mido()
-    names = mido.get_input_names()
+def resolve_port_name(names: list[str], name_or_index: str, kind: str = "port") -> str:
+    """Resolve a port by exact name, case-insensitive substring, or index."""
     if not names:
-        raise RuntimeError("no MIDI input ports found (is the controller connected?)")
-
+        raise RuntimeError(f"no MIDI {kind} ports found (is the device connected?)")
     if name_or_index.isdigit():
         idx = int(name_or_index)
         if not 0 <= idx < len(names):
-            raise RuntimeError(f"port index {idx} out of range (0..{len(names) - 1})")
-        return mido.open_input(names[idx])
-
+            raise RuntimeError(f"{kind} index {idx} out of range (0..{len(names) - 1})")
+        return names[idx]
     if name_or_index in names:
-        return mido.open_input(name_or_index)
+        return name_or_index
     matches = [n for n in names if name_or_index.lower() in n.lower()]
     if len(matches) == 1:
-        return mido.open_input(matches[0])
+        return matches[0]
     if not matches:
-        raise RuntimeError(f"no MIDI input matches {name_or_index!r}. Available: {names}")
+        raise RuntimeError(f"no MIDI {kind} matches {name_or_index!r}. Available: {names}")
     raise RuntimeError(f"{name_or_index!r} is ambiguous, matches: {matches}")
+
+
+def open_input(name_or_index: str):
+    """Open a MIDI input by exact name, case-insensitive substring, or index."""
+    mido = _import_mido()
+    name = resolve_port_name(mido.get_input_names(), name_or_index, "input")
+    return mido.open_input(name)

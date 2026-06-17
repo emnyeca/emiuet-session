@@ -1,21 +1,23 @@
 """Drive the Emiuet Session R&D core from a real MIDI controller.
 
-Usage::
+Usage (PowerShell; use a backtick ` for line continuation, or one line)::
 
-    # list available MIDI input ports
+    # list MIDI input and output ports
     python -m apps.desktop_debug.midi_controller_harness --list-ports
 
-    # play the core from a controller via a profile
-    python -m apps.desktop_debug.midi_controller_harness \
-        --midi-in "MIDI PAD-01" \
+    # play the core from a controller and send to a MIDI OUT port
+    python -m apps.desktop_debug.midi_controller_harness `
+        --midi-in "H12MIDI-Pro 1" `
+        --midi-out "H12MIDI-Pro 1" `
         --profile apps/desktop_debug/controller_profiles/ccp16.json
 
-    # demonstrate the mapping + core without any hardware (synthetic messages)
+    # mapping + core only, no hardware (synthetic messages); add --dry-run for OUT log
     python -m apps.desktop_debug.midi_controller_harness --self-test
 
 For each incoming message the harness logs RAW (the MIDI message), MAPPED (the
-action it resolved to), and then the engine's emitted MIDI events and the
-two-row DisplayState (via the shared DebugConsole renderer).
+resolved action), CORE (the engine's abstract MIDI events), and -- when a MIDI
+OUT is attached -- OUT (the messages actually sent), plus the two-row
+DisplayState.
 """
 
 from __future__ import annotations
@@ -37,69 +39,133 @@ from .midi_input import (
     list_input_ports,
     open_input,
 )
+from .midi_output import MidiOutputAdapter, list_output_ports
 
 _SELF_TEST_PROFILE = "ccp16"
 
 
-def _emit(console: DebugConsole, mapped: str | None, raw: str, frame: InputFrame | None) -> None:
-    print(f"RAW    : {raw}")
-    print(f"MAPPED : {mapped if mapped else '(unmapped -- not in profile)'}")
-    if frame is not None:
-        frame.now_ms = console.clock_ms
-        out = console.core.process(frame)
-        for ev in out.midi_events:
-            print(f"CORE   : {ev.short()}")
-        print(console.render(out))
+def _emit(console, result, adapter: MidiOutputAdapter | None, frame: InputFrame | None) -> None:
+    print(f"RAW    : {result.raw}")
+    print(f"MAPPED : {result.mapped if result.mapped else '(unmapped -- not in profile)'}")
+    if frame is None:
+        print()
+        return
+    frame.now_ms = console.clock_ms
+    out = console.core.process(frame)
+    for ev in out.midi_events:
+        print(f"CORE   : {ev.short()}")
+        if adapter is not None:
+            print(f"OUT    : {adapter.send_event(ev)}")
+    # On a panic, also send All Notes Off (CC 123) to the channels in use.
+    if frame.panic and adapter is not None:
+        for line in adapter.all_notes_off():
+            print(f"OUT    : {line}")
+    print(console.render(out))
     print()
 
 
-def _self_test(console: DebugConsole, mapper: MidiInputMapper) -> int:
+def _shutdown(console, adapter: MidiOutputAdapter | None, send_all_notes_off: bool) -> None:
+    """Stuck-note safety: stop everything still sounding when the harness ends."""
+    if adapter is None:
+        return
+    panic = console.core.process(InputFrame(panic=True))
+    for ev in panic.midi_events:
+        print(f"OUT    : {adapter.send_event(ev)}")
+    if send_all_notes_off:
+        for line in adapter.all_notes_off():
+            print(f"OUT    : {line}")
+    adapter.close()
+
+
+def _self_test(console, mapper, adapter: MidiOutputAdapter | None) -> int:
     print("Self-test: feeding synthetic CCP16-style messages (no hardware).\n")
+    # CCP16 sends on channel 10 (0-based 9) at FULL LEVEL velocity 127. Match the
+    # profile's channel so the synthetic messages pass its channel filter.
+    ch = (mapper.profile.midi_channel or 1) - 1
     script = [
-        MidiMessage("note_on", channel=0, note=36, velocity=100),  # slot 0 press (C)
-        MidiMessage("note_off", channel=0, note=36),  # slot 0 release
-        MidiMessage("note_on", channel=0, note=40, velocity=90),  # slot 1 press (colour)
-        MidiMessage("note_on", channel=0, note=45, velocity=127),  # next_segment
-        MidiMessage("note_off", channel=0, note=40),  # slot 1 release (held across change)
-        MidiMessage("note_on", channel=0, note=49, velocity=127),  # approach_plus press
-        MidiMessage("note_on", channel=0, note=37, velocity=100),  # slot 2 press (raised +1)
-        MidiMessage("note_off", channel=0, note=49),  # approach_plus release
-        MidiMessage("note_off", channel=0, note=37),
-        MidiMessage("note_on", channel=0, note=47, velocity=127),  # register_up
-        MidiMessage("program_change", channel=0),  # unsupported -> logged only
-        MidiMessage("note_on", channel=0, note=50, velocity=127),  # panic
+        MidiMessage("note_on", channel=ch, note=36, velocity=127),  # slot 0 press (C)
+        MidiMessage("note_off", channel=ch, note=36),  # slot 0 release
+        MidiMessage("note_on", channel=ch, note=40, velocity=127),  # slot 1 press (colour)
+        MidiMessage("note_on", channel=ch, note=45, velocity=127),  # next_segment
+        MidiMessage("note_off", channel=ch, note=40),  # slot 1 release (held across change)
+        MidiMessage("note_on", channel=ch, note=49, velocity=127),  # approach_plus press
+        MidiMessage("note_on", channel=ch, note=37, velocity=127),  # slot 2 press (raised +1)
+        MidiMessage("note_off", channel=ch, note=49),  # approach_plus release
+        MidiMessage("note_off", channel=ch, note=37),
+        MidiMessage("note_on", channel=ch, note=47, velocity=127),  # register_up
+        MidiMessage("program_change", channel=ch),  # unsupported -> logged only
+        MidiMessage("note_on", channel=ch, note=50, velocity=127),  # panic
     ]
     for msg in script:
         result = mapper.map(msg)
-        _emit(console, result.mapped, result.raw, result.frame)
+        _emit(console, result, adapter, result.frame)
     return 0
 
 
-def run(midi_in: str, profile: ControllerProfile, orientation: str) -> int:
+def run(midi_in, profile, orientation, adapter, send_all_notes_off) -> int:
     console = DebugConsole(EmiuetCore(sample_performance_model()), orientation=orientation)
     mapper = MidiInputMapper(profile)
     port = open_input(midi_in)
     start = time.monotonic()
 
-    print(f"Listening on '{port.name}'. Press Ctrl+C to stop.\n")
+    out_name = adapter.name if adapter is not None else "(none, log only)"
+    print(f"Input : {port.name}")
+    print(f"Output: {out_name}")
+    print("Press Ctrl+C to stop.\n")
     print(console.handle("state"))
     print()
     try:
         for msg in port:
             console.clock_ms = (time.monotonic() - start) * 1000.0
             result = mapper.map(MidiMessage.from_mido(msg))
-            _emit(console, result.mapped, result.raw, result.frame)
+            _emit(console, result, adapter, result.frame)
     except KeyboardInterrupt:
         print("\nStopped.")
     finally:
+        _shutdown(console, adapter, send_all_notes_off)
         port.close()
     return 0
 
 
+def _print_ports(show_in: bool, show_out: bool) -> int:
+    try:
+        if show_in:
+            print("MIDI input ports:")
+            ins = list_input_ports()
+            for i, name in enumerate(ins) if ins else []:
+                print(f"[{i}] {name}")
+            if not ins:
+                print("(none)")
+        if show_out:
+            if show_in:
+                print()
+            print("MIDI output ports:")
+            outs = list_output_ports()
+            for i, name in enumerate(outs) if outs else []:
+                print(f"[{i}] {name}")
+            if not outs:
+                print("(none)")
+    except RuntimeError as exc:
+        print(exc, file=sys.stderr)
+        return 2
+    return 0
+
+
+def _make_adapter(args) -> MidiOutputAdapter | None:
+    if args.midi_out:
+        return MidiOutputAdapter.open(args.midi_out)  # may raise RuntimeError
+    if args.dry_run:
+        return MidiOutputAdapter()  # port=None -> formats OUT lines, sends nothing
+    return None
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Emiuet Session MIDI controller harness")
-    parser.add_argument("--list-ports", action="store_true", help="list MIDI input ports and exit")
+    parser.add_argument("--list-ports", action="store_true", help="list input and output ports")
+    parser.add_argument("--list-inputs", action="store_true", help="list MIDI input ports")
+    parser.add_argument("--list-outputs", action="store_true", help="list MIDI output ports")
     parser.add_argument("--midi-in", help="MIDI input port name, substring, or index")
+    parser.add_argument("--midi-out", help="MIDI output port name, substring, or index")
     parser.add_argument("--profile", help="path to a controller profile JSON")
     parser.add_argument(
         "--layout-orientation", default="two-row", choices=["two-row", "alternating"]
@@ -107,30 +173,46 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--self-test", action="store_true", help="run synthetic messages, no hardware needed"
     )
+    parser.add_argument(
+        "--dry-run", action="store_true", help="format OUT log lines without sending MIDI"
+    )
+    parser.add_argument(
+        "--send-all-notes-off-on-exit",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="also send CC 123 (All Notes Off) on exit (default: on)",
+    )
     args = parser.parse_args(argv)
 
-    if args.list_ports:
-        try:
-            ports = list_input_ports()
-        except RuntimeError as exc:
-            print(exc, file=sys.stderr)
-            return 2
-        if not ports:
-            print("No MIDI input ports found.")
-        for i, name in enumerate(ports):
-            print(f"[{i}] {name}")
-        return 0
+    if args.list_ports or args.list_inputs or args.list_outputs:
+        show_in = args.list_ports or args.list_inputs
+        show_out = args.list_ports or args.list_outputs
+        return _print_ports(show_in, show_out)
 
     print("Emiuet Session -- MIDI controller harness")
 
+    try:
+        adapter = _make_adapter(args)
+    except RuntimeError as exc:
+        print(exc, file=sys.stderr)
+        return 2
+
     if args.self_test:
         profile = ControllerProfile.load(_default_profile_path(_SELF_TEST_PROFILE))
-        print(f"Loaded profile: {profile.name}\n")
-        console = DebugConsole(EmiuetCore(sample_performance_model()), orientation=args.layout_orientation)
-        return _self_test(console, MidiInputMapper(profile))
+        print(f"Loaded profile: {profile.name}")
+        print(f"Output: {adapter.name if adapter else '(none, log only)'}\n")
+        console = DebugConsole(
+            EmiuetCore(sample_performance_model()), orientation=args.layout_orientation
+        )
+        rc = _self_test(console, MidiInputMapper(profile), adapter)
+        _shutdown(console, adapter, args.send_all_notes_off_on_exit)
+        return rc
 
     if not args.midi_in or not args.profile:
-        parser.error("--midi-in and --profile are required (or use --list-ports / --self-test)")
+        parser.error(
+            "--midi-in and --profile are required "
+            "(or use --list-ports / --self-test). --midi-out is optional."
+        )
 
     try:
         profile = ControllerProfile.load(args.profile)
@@ -140,7 +222,9 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Loaded profile: {profile.name}")
 
     try:
-        return run(args.midi_in, profile, args.layout_orientation)
+        return run(
+            args.midi_in, profile, args.layout_orientation, adapter, args.send_all_notes_off_on_exit
+        )
     except RuntimeError as exc:
         print(exc, file=sys.stderr)
         return 2

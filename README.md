@@ -24,7 +24,7 @@ Two parallel tracks:
 - Design docs: `docs/emiuet_session_architecture.md`,
   `docs/emiuet_performance_model.md`, `docs/segment_policy.md`,
   `docs/rd_core_desktop_harness.md`, `docs/midi_controller_testing.md`,
-  `docs/ccp16_mapping.md`
+  `docs/midi_output_testing.md`, `docs/ccp16_mapping.md`
 - The C++ (Teensy/ESP32) port is a later phase that mirrors this structure.
 
 ## Documentation
