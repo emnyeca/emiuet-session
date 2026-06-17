@@ -1,6 +1,6 @@
 {
   "name": "CCP16BK default test profile (verify note numbers with raw log)",
-  "midi_channel": 1,
+  "midi_channel": 10,
   "note_mappings": {
     "36": { "type": "slot", "slot": 0, "_comment": "core line, key 1" },
     "37": { "type": "slot", "slot": 2, "_comment": "core line, key 2" },
