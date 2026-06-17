@@ -19,6 +19,7 @@ from .display import DisplayState
 from .midi import MidiEvent
 from .profile import PerformanceProfile
 from .register_shift import RegisterShiftMode
+from .solo import SoloGesture
 
 
 class SegmentCommand:
@@ -57,6 +58,15 @@ class InputFrame:
     # Tempo / profile.
     tempo_bpm: float | None = None
     profile_command: PerformanceProfile | str | None = None  # profile, or "cycle"
+
+    # Solo Mode (relative melodic resolver). Gestures are edges, like keys.
+    solo_gesture: SoloGesture | None = None
+    solo_gesture_release: SoloGesture | None = None
+    pending_octave_up: bool = False
+    pending_octave_down: bool = False
+    pending_skip: bool = False
+    clear_pending_reset_cursor: bool = False
+    restart_head: bool = False
 
     # Safety.
     panic: bool = False

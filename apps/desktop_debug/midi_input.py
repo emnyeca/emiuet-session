@@ -21,12 +21,14 @@ from pathlib import Path
 
 from emiuet_session.core.approach import ApproachDirection
 from emiuet_session.core.frames import InputFrame, RegisterCommand, SegmentCommand
+from emiuet_session.core.solo import SoloGesture
 
 PROFILES_DIR = Path(__file__).parent / "controller_profiles"
 
 # Action types in a profile mapping entry.
 _ACTION_SLOT = "slot"
 _ACTION_COMMAND = "command"
+_ACTION_SOLO = "solo_gesture"
 
 # Commands that are momentary modifiers (press AND release matter). Every other
 # command is a one-shot trigger that fires on press and ignores release.
@@ -42,8 +44,15 @@ _TRIGGER_COMMANDS = {
     "register_reset",
     "profile_cycle",
     "panic",
+    # Solo Mode controls (one-shot triggers).
+    "pending_skip",
+    "pending_octave_up",
+    "pending_octave_down",
+    "clear_pending_reset_cursor",
+    "restart_head",
 }
 COMMAND_NAMES = _TRIGGER_COMMANDS | set(_APPROACH)
+GESTURE_NAMES = {g.value for g in SoloGesture}
 
 # A CC button counts as pressed at or above this value (MIDI half-way).
 CC_PRESS_THRESHOLD = 64
@@ -144,8 +153,17 @@ def _validate_entry(entry: dict, where: str, key) -> None:
                 f"{where}[{key}] command {command!r} unknown; expected one of "
                 f"{sorted(COMMAND_NAMES)}"
             )
+    elif kind == _ACTION_SOLO:
+        gesture = entry.get("gesture")
+        if gesture not in GESTURE_NAMES:
+            raise ProfileError(
+                f"{where}[{key}] gesture {gesture!r} unknown; expected one of "
+                f"{sorted(GESTURE_NAMES)}"
+            )
     else:
-        raise ProfileError(f"{where}[{key}] type must be 'slot' or 'command', got {kind!r}")
+        raise ProfileError(
+            f"{where}[{key}] type must be 'slot', 'command', or 'solo_gesture', got {kind!r}"
+        )
 
 
 @dataclass
@@ -191,6 +209,14 @@ class MidiInputMapper:
                 return MappedEvent(raw, f"slot {slot} press", InputFrame(key_presses=(slot,)))
             return MappedEvent(raw, f"slot {slot} release", InputFrame(key_releases=(slot,)))
 
+        if entry["type"] == _ACTION_SOLO:
+            gesture = SoloGesture(entry["gesture"])
+            if is_press:
+                return MappedEvent(raw, f"{gesture.value} press", InputFrame(solo_gesture=gesture))
+            return MappedEvent(
+                raw, f"{gesture.value} release", InputFrame(solo_gesture_release=gesture)
+            )
+
         command = entry["command"]
         if command in _APPROACH:
             direction = _APPROACH[command]
@@ -219,6 +245,16 @@ def _trigger_frame(command: str) -> InputFrame:
         return InputFrame(profile_command="cycle")
     if command == "panic":
         return InputFrame(panic=True)
+    if command == "pending_skip":
+        return InputFrame(pending_skip=True)
+    if command == "pending_octave_up":
+        return InputFrame(pending_octave_up=True)
+    if command == "pending_octave_down":
+        return InputFrame(pending_octave_down=True)
+    if command == "clear_pending_reset_cursor":
+        return InputFrame(clear_pending_reset_cursor=True)
+    if command == "restart_head":
+        return InputFrame(restart_head=True)
     raise ProfileError(f"unhandled command {command!r}")  # unreachable if validated
 
 

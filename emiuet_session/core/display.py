@@ -37,6 +37,16 @@ class DisplayState:
     lpc: tuple[int, ...] = ()  # local pitch collection (pitch classes)
     active_notes: tuple[int, ...] = field(default_factory=tuple)
 
+    # Performance mode + Solo Mode state.
+    mode: str = "Chord"
+    core_pcs: tuple[int, ...] = ()  # current core pitch classes
+    last_output_note: int | None = None
+    last_gesture: str = ""
+    phrase_direction: str = ""
+    pending_octave: int = 0
+    pending_skip: int = 0
+    resolver_trace: str = ""
+
     def header_lines(self) -> list[str]:
         """The compact two/three-line view planned for the OLED."""
         top = f"{self.current_chord} > {self.next_chord}".strip(" >")

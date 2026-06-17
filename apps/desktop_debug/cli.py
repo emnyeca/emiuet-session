@@ -88,6 +88,8 @@ class DebugConsole:
     def render(self, out: OutputFrame) -> str:
         d = out.display
         assert d is not None
+        if d.mode == "Solo":
+            return self._render_solo(out, d)
         lines = [
             f"[seg {d.segment_index + 1}/{d.segment_count} "
             f"step {d.step_index + 1}/{d.step_count}]  "
@@ -99,6 +101,26 @@ class DebugConsole:
             f"  dbg  : {d.selected_collection} prio{d.scale_priority} "
             f"retry{d.retry_level} lpc={list(d.lpc)} active={list(d.active_notes)}"
         )
+        for ev in out.midi_events:
+            lines.append("  midi : " + ev.short())
+        return "\n".join(lines)
+
+    def _render_solo(self, out: OutputFrame, d) -> str:
+        from emiuet_session.core.pitch import note_name
+
+        last = d.last_output_note
+        last_label = f"{note_name(last % 12)}({last})" if last is not None else "-"
+        lines = [
+            f"[seg {d.segment_index + 1}/{d.segment_count} "
+            f"step {d.step_index + 1}/{d.step_count}] "
+            f"{d.current_chord} > {d.next_chord}  SOLO",
+            f"  last: {last_label}  gesture: {d.last_gesture or '-'}  dir: {d.phrase_direction}",
+            f"  pending: octave={d.pending_octave:+d} skip={d.pending_skip}",
+            f"  core: {' '.join(note_name(pc) for pc in d.core_pcs)}",
+            f"  lpc : {' '.join(note_name(pc) for pc in d.lpc)}",
+        ]
+        if d.resolver_trace:
+            lines.append(f"  trace: {d.resolver_trace}")
         for ev in out.midi_events:
             lines.append("  midi : " + ev.short())
         return "\n".join(lines)

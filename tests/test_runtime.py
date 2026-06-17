@@ -81,15 +81,17 @@ def test_auto_step_advance_does_not_retrigger_held_note():
     assert core.active_notes() == held
 
 
-def test_segment_advance_clamps_at_ends():
+def test_segment_navigation_wraps_at_ends():
     from emiuet_session.fixtures import sample_performance_model
 
     core = EmiuetCore(sample_performance_model())
+    last = core.model.segment_count() - 1
+    # Previous from the first segment wraps to the last.
     core.process(InputFrame(segment_command=SegmentCommand.PREV))
-    assert core.segment_index == 0  # cannot go below 0
-    for _ in range(10):
-        core.process(InputFrame(segment_command=SegmentCommand.NEXT))
-    assert core.segment_index == core.model.segment_count() - 1  # clamps at end
+    assert core.segment_index == last
+    # Next from the last segment wraps back to the first.
+    core.process(InputFrame(segment_command=SegmentCommand.NEXT))
+    assert core.segment_index == 0
 
 
 def test_display_state_tracks_current_and_next_chord():

@@ -98,6 +98,7 @@ class Step:
     scale_priority: int = 0
     retry_level: int = 0
     lpc: tuple[int, ...] = ()
+    core_pcs: tuple[int, ...] = ()  # chord tones (core pitch classes), for Solo Mode
 
 
 @dataclass

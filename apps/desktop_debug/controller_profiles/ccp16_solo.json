@@ -1,0 +1,23 @@
+{
+  "name": "CCP16BK Solo Mode profile",
+  "midi_channel": 10,
+  "note_mappings": {
+    "36": { "type": "solo_gesture", "gesture": "repeat", "_pad": "PAD1" },
+    "37": { "type": "solo_gesture", "gesture": "core_down", "_pad": "PAD2" },
+    "38": { "type": "solo_gesture", "gesture": "lpc_down", "_pad": "PAD3" },
+    "39": { "type": "solo_gesture", "gesture": "chromatic_down", "_pad": "PAD4" },
+    "40": { "type": "solo_gesture", "gesture": "resolve", "_pad": "PAD5" },
+    "41": { "type": "solo_gesture", "gesture": "core_up", "_pad": "PAD6" },
+    "42": { "type": "solo_gesture", "gesture": "lpc_up", "_pad": "PAD7" },
+    "43": { "type": "solo_gesture", "gesture": "chromatic_up", "_pad": "PAD8" },
+    "44": { "type": "command", "command": "previous_segment", "_pad": "PAD9" },
+    "45": { "type": "command", "command": "next_segment", "_pad": "PAD10" },
+    "46": { "type": "command", "command": "pending_skip", "_pad": "PAD11" },
+    "47": { "type": "command", "command": "clear_pending_reset_cursor", "_pad": "PAD12" },
+    "48": { "type": "command", "command": "pending_octave_down", "_pad": "PAD13" },
+    "49": { "type": "command", "command": "pending_octave_up", "_pad": "PAD14" },
+    "50": { "type": "command", "command": "restart_head", "_pad": "PAD15" },
+    "51": { "type": "command", "command": "panic", "_pad": "PAD16" }
+  },
+  "control_mappings": {}
+}

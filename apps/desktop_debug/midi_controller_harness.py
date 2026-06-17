@@ -27,6 +27,7 @@ import sys
 import time
 
 from emiuet_session.core.frames import InputFrame
+from emiuet_session.core.mode import PerformanceMode
 from emiuet_session.fixtures import sample_performance_model
 from emiuet_session.runtime import EmiuetCore
 
@@ -77,33 +78,57 @@ def _shutdown(console, adapter: MidiOutputAdapter | None, send_all_notes_off: bo
     adapter.close()
 
 
-def _self_test(console, mapper, adapter: MidiOutputAdapter | None) -> int:
-    print("Self-test: feeding synthetic CCP16-style messages (no hardware).\n")
-    # CCP16 sends on channel 10 (0-based 9) at FULL LEVEL velocity 127. Match the
-    # profile's channel so the synthetic messages pass its channel filter.
-    ch = (mapper.profile.midi_channel or 1) - 1
-    script = [
+def _chord_script(ch: int) -> list[MidiMessage]:
+    return [
         MidiMessage("note_on", channel=ch, note=36, velocity=127),  # slot 0 press (C)
         MidiMessage("note_off", channel=ch, note=36),  # slot 0 release
         MidiMessage("note_on", channel=ch, note=40, velocity=127),  # slot 1 press (colour)
         MidiMessage("note_on", channel=ch, note=45, velocity=127),  # next_segment
         MidiMessage("note_off", channel=ch, note=40),  # slot 1 release (held across change)
-        MidiMessage("note_on", channel=ch, note=49, velocity=127),  # approach_plus press
-        MidiMessage("note_on", channel=ch, note=37, velocity=127),  # slot 2 press (raised +1)
-        MidiMessage("note_off", channel=ch, note=49),  # approach_plus release
-        MidiMessage("note_off", channel=ch, note=37),
         MidiMessage("note_on", channel=ch, note=47, velocity=127),  # register_up
         MidiMessage("program_change", channel=ch),  # unsupported -> logged only
         MidiMessage("note_on", channel=ch, note=50, velocity=127),  # panic
     ]
+
+
+def _solo_script(ch: int) -> list[MidiMessage]:
+    # 36 repeat, 41 core_up, 42 lpc_up, 43 chromatic_up, 46 pending_skip,
+    # 49 pending_octave_up, 45 next_segment, 40 resolve, 51 panic
+    def on(note):
+        return MidiMessage("note_on", channel=ch, note=note, velocity=127)
+
+    def off(note):
+        return MidiMessage("note_off", channel=ch, note=note)
+
+    return [
+        on(36), off(36),          # repeat (initial) -> C4
+        on(41), off(41),          # core_up -> D4
+        on(42), off(42),          # lpc_up
+        on(43), off(43),          # chromatic_up
+        on(46),                   # pending_skip
+        on(41), off(41),          # core_up with skip=1
+        on(49),                   # pending_octave_up
+        on(41), off(41),          # core_up +12
+        on(45),                   # next_segment (held note stays; next gesture uses new LPC)
+        on(40), off(40),          # resolve in the new chord
+        on(51),                   # panic
+    ]
+
+
+def _self_test(console, mapper, adapter: MidiOutputAdapter | None, mode: PerformanceMode) -> int:
+    print("Self-test: feeding synthetic CCP16-style messages (no hardware).\n")
+    # CCP16 sends on channel 10 (0-based 9) at FULL LEVEL velocity 127. Match the
+    # profile's channel so the synthetic messages pass its channel filter.
+    ch = (mapper.profile.midi_channel or 1) - 1
+    script = _solo_script(ch) if mode is PerformanceMode.SOLO else _chord_script(ch)
     for msg in script:
         result = mapper.map(msg)
         _emit(console, result, adapter, result.frame)
     return 0
 
 
-def run(midi_in, profile, orientation, adapter, send_all_notes_off) -> int:
-    console = DebugConsole(EmiuetCore(sample_performance_model()), orientation=orientation)
+def run(midi_in, profile, orientation, adapter, send_all_notes_off, mode) -> int:
+    console = DebugConsole(EmiuetCore(sample_performance_model(), mode=mode), orientation=orientation)
     mapper = MidiInputMapper(profile)
     port = open_input(midi_in)
     start = time.monotonic()
@@ -171,6 +196,10 @@ def main(argv: list[str] | None = None) -> int:
         "--layout-orientation", default="two-row", choices=["two-row", "alternating"]
     )
     parser.add_argument(
+        "--mode", default="chord", choices=["chord", "solo", "bassist"],
+        help="performance mode (default: chord; bassist is reserved/not implemented)",
+    )
+    parser.add_argument(
         "--self-test", action="store_true", help="run synthetic messages, no hardware needed"
     )
     parser.add_argument(
@@ -191,6 +220,12 @@ def main(argv: list[str] | None = None) -> int:
 
     print("Emiuet Session -- MIDI controller harness")
 
+    if args.mode == "bassist":
+        print("BassistMode は予約のみで未実装です。--mode chord または --mode solo を使ってください。",
+              file=sys.stderr)
+        return 2
+    mode = PerformanceMode.SOLO if args.mode == "solo" else PerformanceMode.CHORD
+
     try:
         adapter = _make_adapter(args)
     except RuntimeError as exc:
@@ -198,13 +233,14 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     if args.self_test:
-        profile = ControllerProfile.load(_default_profile_path(_SELF_TEST_PROFILE))
-        print(f"Loaded profile: {profile.name}")
+        default_profile = "ccp16_solo" if mode is PerformanceMode.SOLO else _SELF_TEST_PROFILE
+        profile = ControllerProfile.load(_default_profile_path(default_profile))
+        print(f"Mode: {args.mode}  |  Loaded profile: {profile.name}")
         print(f"Output: {adapter.name if adapter else '(none, log only)'}\n")
         console = DebugConsole(
-            EmiuetCore(sample_performance_model()), orientation=args.layout_orientation
+            EmiuetCore(sample_performance_model(), mode=mode), orientation=args.layout_orientation
         )
-        rc = _self_test(console, MidiInputMapper(profile), adapter)
+        rc = _self_test(console, MidiInputMapper(profile), adapter, mode)
         _shutdown(console, adapter, args.send_all_notes_off_on_exit)
         return rc
 
@@ -219,11 +255,12 @@ def main(argv: list[str] | None = None) -> int:
     except ProfileError as exc:
         print(f"profile error: {exc}", file=sys.stderr)
         return 2
-    print(f"Loaded profile: {profile.name}")
+    print(f"Mode: {args.mode}  |  Loaded profile: {profile.name}")
 
     try:
         return run(
-            args.midi_in, profile, args.layout_orientation, adapter, args.send_all_notes_off_on_exit
+            args.midi_in, profile, args.layout_orientation, adapter,
+            args.send_all_notes_off_on_exit, mode,
         )
     except RuntimeError as exc:
         print(exc, file=sys.stderr)

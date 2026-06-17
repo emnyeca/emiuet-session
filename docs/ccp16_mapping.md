@@ -66,6 +66,44 @@ profile を編集するだけ。）
 コントローラーでも同じハーネスが使えます（制御キーを CC ボタンに割り当てた例として
 `generic_16pad.json` を同梱）。
 
+## Solo Mode profile（`controller_profiles/ccp16_solo.json`）
+
+Solo Mode 用の profile。PAD1〜8 を旋律ジェスチャー、PAD9〜16 を制御に割り当てます。
+ChordMode 用の `ccp16.json` はそのまま残します（用途で profile を使い分ける）。
+
+演奏キー:
+
+```
+PAD5      PAD6      PAD7      PAD8
+Resolve   Core↑     LPC↑      Chromatic↑
+
+PAD1      PAD2      PAD3      PAD4
+Repeat    Core↓     LPC↓      Chromatic↓
+```
+
+制御キー:
+
+```
+PAD9   Previous Segment
+PAD10  Next Segment
+PAD11  Pending Skip
+PAD12  Clear Pending / Reset Cursor
+PAD13  Pending Octave Down
+PAD14  Pending Octave Up
+PAD15  Restart Head
+PAD16  Panic
+```
+
+配置意図: Advance（PAD9/10）を演奏キー PAD5-8 の真上に、Skip（PAD11）を演奏キー近くに、
+Octave Down/Up（PAD13/14）を隣接配置。Mode 切替は誤爆防止のため CLI option（`--mode`）に
+置き、実機キーには割り当てません。Panic は端（PAD16）。
+
+note 番号は実機確認済みの 36〜51（channel 10）。起動例:
+
+```powershell
+python -m apps.desktop_debug.midi_controller_harness --mode solo --midi-in "H12MIDI-Pro 1" --profile apps/desktop_debug/controller_profiles/ccp16_solo.json
+```
+
 ## ベンダーマニュアル
 
 CCP16 本体マニュアルは `docs/vender/cp_ccp16.pdf`（`.gitignore` 対象、ローカル参照用）。

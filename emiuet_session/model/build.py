@@ -67,6 +67,7 @@ def build_performance_model(
                     scale_priority=hstep.scale_priority,
                     retry_level=hstep.retry_level,
                     lpc=tuple(hstep.local_pitch_collection),
+                    core_pcs=tuple(hstep.chord_tones),
                 )
             )
             beat_offset += chord.beats
