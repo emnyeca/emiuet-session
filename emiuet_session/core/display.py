@@ -37,6 +37,25 @@ class DisplayState:
     lpc: tuple[int, ...] = ()  # local pitch collection (pitch classes)
     active_notes: tuple[int, ...] = field(default_factory=tuple)
 
+    # Performance mode + Solo Mode state.
+    mode: str = "Chord"
+    core_pcs: tuple[int, ...] = ()  # current core pitch classes
+    last_output_note: int | None = None
+    last_gesture: str = ""
+    phrase_direction: str = ""
+    pending_octave: int = 0
+    pending_skip: int = 0
+    resolver_trace: str = ""
+
+    # Transport / Auto Follow / Harmonic Ahead.
+    advance_mode: str = "manual"
+    transport: str = "stopped"
+    ticks: int = 0
+    now_chord: str = ""  # timeline-current chord (NOW)
+    aim_chord: str = ""  # chord the resolver looks at (AIM; == ahead target when armed)
+    ahead_active: bool = False
+    warning: str = ""
+
     def header_lines(self) -> list[str]:
         """The compact two/three-line view planned for the OLED."""
         top = f"{self.current_chord} > {self.next_chord}".strip(" >")

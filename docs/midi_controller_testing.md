@@ -49,6 +49,21 @@ python -m apps.desktop_debug.midi_controller_harness --list-ports
   mapping と engine 出力の確認、profile の動作確認に使えます。
 - `--midi-out` を付けると、engine の出力を実 MIDI OUT へ送って外部音源を鳴らせます
   （省略時はログのみ）。詳細は `docs/midi_output_testing.md` 参照。
+- `--mode solo` で Solo Mode（相対メロディ）になります。詳細は `docs/solo_mode.md` 参照。
+
+### Solo Mode の起動例
+
+PowerShell で複数行に分ける場合は、行末に `\` ではなくバッククォート `` ` `` を使います。
+
+```powershell
+python -m apps.desktop_debug.midi_controller_harness --mode solo --midi-in "H12MIDI-Pro 1" --profile apps/desktop_debug/controller_profiles/ccp16_solo.json
+```
+
+ChordMode（既存の固定 slot 方式、比較用）:
+
+```powershell
+python -m apps.desktop_debug.midi_controller_harness --mode chord --midi-in "H12MIDI-Pro 1" --profile apps/desktop_debug/controller_profiles/ccp16.json
+```
 
 ## ログの読み方
 
