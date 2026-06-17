@@ -33,6 +33,18 @@ from ..core.solo import (
     SoloGesture,
     resolve_solo_note,
 )
+from ..core.timeline import (
+    ChordContext,
+    CompiledTimeline,
+    HarmonicAhead,
+    TimelineBasis,
+)
+from ..core.transport import (
+    AdvanceMode,
+    StopPolicy,
+    TransportEvent,
+    TransportState,
+)
 from ..model.performance import Layout, PerformanceModel, Segment, Step
 
 _PROFILE_LABELS = {
@@ -50,6 +62,9 @@ class EmiuetCore:
         model: PerformanceModel,
         *,
         mode: PerformanceMode = PerformanceMode.CHORD,
+        advance_mode: AdvanceMode = AdvanceMode.MANUAL,
+        timeline: CompiledTimeline | None = None,
+        stop_policy: StopPolicy = StopPolicy.RESET_TO_HEAD,
         channel: int = 1,
         velocity: int = 100,
         tempo_bpm: float | None = None,
@@ -57,6 +72,9 @@ class EmiuetCore:
     ) -> None:
         self.model = model
         self.mode = mode
+        self.advance_mode = advance_mode
+        self.timeline = timeline
+        self.stop_policy = stop_policy
         self.channel = channel
         self.velocity = velocity
         self.anchor_midi = anchor_midi
@@ -66,6 +84,11 @@ class EmiuetCore:
         self.step_index = 0
         self._step_elapsed_ms = 0.0
         self._last_now_ms: float | None = None
+
+        # Transport / playhead (Auto Follow).
+        self.transport_state = TransportState.STOPPED
+        self._ticks = 0  # MIDI clock playhead, advanced only while RUNNING
+        self.harmonic_ahead = HarmonicAhead()
 
         self.register = RegisterShift()
         self.approach = ApproachState()
@@ -93,10 +116,42 @@ class EmiuetCore:
         return self.current_step().layout
 
     def current_lpc(self) -> tuple[int, ...]:
-        return self.current_step().lpc
+        return self.current_context().lpc
 
     def current_core_pcs(self) -> tuple[int, ...]:
-        return self.current_step().core_pcs
+        return self.current_context().core_pcs
+
+    @property
+    def ticks(self) -> int:
+        return self._ticks
+
+    def current_compiled_step(self):
+        """Compiled timeline step under the playhead (Auto Follow only)."""
+        if self.advance_mode is AdvanceMode.AUTO_FOLLOW and self.timeline is not None:
+            return self.timeline.find_step_by_tick(self._ticks)
+        return None
+
+    def current_context(self) -> ChordContext:
+        """Current chord context: from the compiled timeline in Auto Follow,
+        otherwise from the PerformanceModel's current step (Manual)."""
+        compiled = self.current_compiled_step()
+        if compiled is not None:
+            return compiled.chord_context
+        step = self.current_step()
+        return ChordContext(step.chord, step.core_pcs, step.lpc, step.scale_collection)
+
+    def effective_context(self) -> ChordContext:
+        """What the Solo resolver actually looks at (Harmonic Ahead target if armed)."""
+        if self.harmonic_ahead.active and self.harmonic_ahead.target_context is not None:
+            return self.harmonic_ahead.target_context
+        return self.current_context()
+
+    def next_context_chord(self) -> str:
+        compiled = self.current_compiled_step()
+        if compiled is not None and self.timeline is not None:
+            nxt = self.timeline.find_next_distinct_chord(compiled)
+            return nxt.chord_context.chord if nxt else ""
+        return self.current_step().next_chord
 
     def active_notes(self) -> tuple[int, ...]:
         notes = list(self._active.values())
@@ -121,14 +176,25 @@ class EmiuetCore:
         self._apply_approach(frame)
         self._apply_pending(frame)
 
+        events.extend(self._apply_transport(frame))
+        if self.transport_state is TransportState.RUNNING and frame.clock_pulses:
+            self._ticks += frame.clock_pulses
+
+        self._apply_ahead_commands(frame)
+
         if frame.restart_head:
             self._restart_head()
 
         if frame.panic:
             events.extend(self._panic())
+            self.harmonic_ahead.clear()
 
-        self._advance_time(frame)
+        if self.advance_mode is AdvanceMode.MANUAL:
+            self._advance_time(frame)
         self._apply_segment_command(frame)
+
+        # Auto-clear Harmonic Ahead once the playhead reaches the target chord.
+        self._update_ahead_arrival()
 
         if self.mode is PerformanceMode.SOLO:
             if frame.solo_gesture_release is not None:
@@ -205,6 +271,75 @@ class EmiuetCore:
         self.step_index = 0
         self._step_elapsed_ms = 0.0
 
+    def _apply_transport(self, frame: InputFrame) -> list[MidiEvent]:
+        """Handle FA/FB/FC. Continue is NOT treated as Start (playhead kept)."""
+        event = frame.transport_event
+        if event is TransportEvent.START:
+            # 頭から再生: playhead reset、transient 全 clear、全音停止。
+            self.transport_state = TransportState.RUNNING
+            self._ticks = 0
+            self.harmonic_ahead.clear()
+            self.pending.reset()
+            self.cursor.reset()
+            return self._all_notes_off()
+        if event is TransportEvent.CONTINUE:
+            # 続き再生: playhead は reset しない。事故防止で transient は clear。
+            self.transport_state = TransportState.RUNNING
+            self.harmonic_ahead.clear()
+            self.pending.reset()
+            return []
+        if event is TransportEvent.STOP:
+            self.transport_state = TransportState.STOPPED
+            self.harmonic_ahead.clear()
+            self.pending.reset()
+            if self.stop_policy is StopPolicy.RESET_TO_HEAD:
+                self._ticks = 0
+            return self._all_notes_off()
+        return []
+
+    def _apply_ahead_commands(self, frame: InputFrame) -> None:
+        if frame.harmonic_ahead:
+            self._arm_ahead(direction=+1)
+        if frame.experimental_previous_context:
+            self._arm_ahead(direction=-1)
+        if frame.clear_ahead_pending:
+            self.harmonic_ahead.clear()
+            self.pending.reset()
+        if frame.resync:
+            self.harmonic_ahead.clear()
+            self.pending.reset()
+            self.cursor.reset()
+
+    def _arm_ahead(self, direction: int) -> None:
+        # AHEAD_ACTIVE 中は ignore（連打で 2 つ先へ進まない）。timeline が要る。
+        if self.harmonic_ahead.active or self.timeline is None:
+            return
+        current = self.current_compiled_step()
+        if current is None:
+            return
+        from ..core.timeline import AheadTargetPolicy
+
+        if direction < 0:
+            target = self.timeline.find_prev_distinct_chord(current)
+        elif self.harmonic_ahead.policy is AheadTargetPolicy.NEXT_STEP:
+            target = self.timeline.find_next_step(current)
+        else:
+            target = self.timeline.find_next_distinct_chord(current)
+        if target is not None:
+            self.harmonic_ahead.active = True
+            self.harmonic_ahead.target_context = target.chord_context
+            self.harmonic_ahead.target_step_id = target.id
+
+    def _update_ahead_arrival(self) -> None:
+        if not self.harmonic_ahead.active:
+            return
+        current = self.current_compiled_step()
+        if current is not None and current.id == self.harmonic_ahead.target_step_id:
+            self.harmonic_ahead.clear()
+
+    def _all_notes_off(self) -> list[MidiEvent]:
+        return self._panic()
+
     def _apply_segment_command(self, frame: InputFrame) -> None:
         # Navigation wraps in both directions (SegmentNavigationPolicy: wrap).
         count = self.model.segment_count()
@@ -244,12 +379,17 @@ class EmiuetCore:
         return events
 
     def _solo_trigger_note(self, gesture: SoloGesture) -> list[MidiEvent]:
-        """Resolve and sound the next solo note (mono, last-press-wins)."""
+        """Resolve and sound the next solo note (mono, last-press-wins).
+
+        The resolver looks at the *effective* context: the Harmonic Ahead target
+        when armed, otherwise the current chord (timeline or model).
+        """
+        context = self.effective_context()
         resolution = resolve_solo_note(
             gesture,
             self.cursor.last_output_note,
-            self.current_lpc(),
-            self.current_core_pcs(),
+            context.lpc,
+            context.core_pcs,
             pending_octave_shift=self.pending.octave_shift,
             pending_skip_count=self.pending.skip_count,
             anchor_midi=self.anchor_midi,
@@ -290,9 +430,11 @@ class EmiuetCore:
         step = self.current_step()
         segment = self.current_segment()
         layout = self.current_layout()
+        now = self.current_context()
+        aim = self.effective_context()
         return DisplayState(
-            current_chord=step.chord,
-            next_chord=step.next_chord,
+            current_chord=now.chord,
+            next_chord=self.next_context_chord(),
             register_label=self.register.label(),
             profile_label=_PROFILE_LABELS[self.profile],
             slot_labels=layout.note_labels(),
@@ -303,17 +445,37 @@ class EmiuetCore:
             segment_count=self.model.segment_count(),
             step_index=self.step_index,
             step_count=len(segment.steps),
-            selected_collection=step.scale_collection,
+            selected_collection=now.scale_collection,
             scale_priority=step.scale_priority,
             retry_level=step.retry_level,
-            lpc=step.lpc,
+            lpc=aim.lpc,
             active_notes=self.active_notes(),
             mode="Solo" if self.mode is PerformanceMode.SOLO else "Chord",
-            core_pcs=step.core_pcs,
+            core_pcs=aim.core_pcs,
             last_output_note=self.cursor.last_output_note,
             last_gesture=self.cursor.last_gesture.name if self.cursor.last_gesture else "",
             phrase_direction=self.cursor.phrase_direction.value,
             pending_octave=self.pending.octave_shift,
             pending_skip=self.pending.skip_count,
             resolver_trace=self._solo_trace,
+            advance_mode=self.advance_mode.value,
+            transport=self.transport_state.value,
+            ticks=self._ticks,
+            now_chord=now.chord,
+            aim_chord=aim.chord,
+            ahead_active=self.harmonic_ahead.active,
+            warning=self._timeline_warning(),
         )
+
+    def _timeline_warning(self) -> str:
+        if self.advance_mode is not AdvanceMode.AUTO_FOLLOW:
+            return ""
+        if self.timeline is None:
+            return "Auto Follow expects a Digitone-step-aligned timeline, but none is loaded."
+        if self.timeline.basis is not TimelineBasis.DIGITONE_STEP:
+            return (
+                "Auto Follow expects a Digitone-step-aligned timeline. "
+                f"Current timeline_basis is {self.timeline.basis.value}. "
+                "Chord cursor may not sync with Digitone II."
+            )
+        return ""

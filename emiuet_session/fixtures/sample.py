@@ -15,6 +15,12 @@ are documented in docs/emiuet_performance_model.md):
 
 from __future__ import annotations
 
+from ..core.timeline import (
+    ChordContext,
+    CompiledHarmonicStep,
+    CompiledTimeline,
+    TimelineBasis,
+)
 from ..model.analysis import HarmonicAnalysis, HarmonicStep, PitchCandidate, PitchRole
 from ..model.build import build_performance_model
 from ..model.performance import PerformanceModel
@@ -133,3 +139,39 @@ def sample_analysis() -> HarmonicAnalysis:
 
 def sample_performance_model() -> PerformanceModel:
     return build_performance_model(sample_song(), sample_analysis())
+
+
+def sample_compiled_timeline(ticks_per_step: int = 24) -> CompiledTimeline:
+    """Digitone-step-basis timeline for the sample (one compiled step per chord).
+
+    The original tune is 120 BPM 4/4, but the compiled timeline is purely
+    tick-based: each chord is one Digitone step of ``ticks_per_step`` clocks,
+    regardless of the original bar length. Auto Follow advances by these compiled
+    ticks, not by the original tempo. (See docs/digitone_step_timeline.md.)
+    """
+    steps: list[CompiledHarmonicStep] = []
+    tick = 0
+    for i, hstep in enumerate(sample_analysis().steps):
+        context = ChordContext(
+            chord=hstep.chord_symbol,
+            core_pcs=tuple(hstep.chord_tones),
+            lpc=tuple(hstep.local_pitch_collection),
+            scale_collection=hstep.scale_collection,
+        )
+        steps.append(
+            CompiledHarmonicStep(
+                id=f"c{i}",
+                start_tick=tick,
+                end_tick=tick + ticks_per_step,
+                chord_context=context,
+                source_step_index=i,
+                source_label=hstep.chord_symbol,
+            )
+        )
+        tick += ticks_per_step
+    return CompiledTimeline(
+        basis=TimelineBasis.DIGITONE_STEP,
+        steps=steps,
+        original_tempo=120.0,
+        digitone_tempo=60.0,
+    )

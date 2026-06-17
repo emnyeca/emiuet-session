@@ -25,7 +25,8 @@ Two parallel tracks:
   `docs/emiuet_performance_model.md`, `docs/segment_policy.md`,
   `docs/rd_core_desktop_harness.md`, `docs/midi_controller_testing.md`,
   `docs/midi_output_testing.md`, `docs/ccp16_mapping.md`,
-  `docs/solo_mode.md`, `docs/relative_melodic_resolver.md`
+  `docs/solo_mode.md`, `docs/relative_melodic_resolver.md`,
+  `docs/auto_follow.md`, `docs/harmonic_ahead.md`, `docs/digitone_step_timeline.md`
 - The C++ (Teensy/ESP32) port is a later phase that mirrors this structure.
 
 ## Documentation

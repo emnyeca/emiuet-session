@@ -47,6 +47,15 @@ class DisplayState:
     pending_skip: int = 0
     resolver_trace: str = ""
 
+    # Transport / Auto Follow / Harmonic Ahead.
+    advance_mode: str = "manual"
+    transport: str = "stopped"
+    ticks: int = 0
+    now_chord: str = ""  # timeline-current chord (NOW)
+    aim_chord: str = ""  # chord the resolver looks at (AIM; == ahead target when armed)
+    ahead_active: bool = False
+    warning: str = ""
+
     def header_lines(self) -> list[str]:
         """The compact two/three-line view planned for the OLED."""
         top = f"{self.current_chord} > {self.next_chord}".strip(" >")

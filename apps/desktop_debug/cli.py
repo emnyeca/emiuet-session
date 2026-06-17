@@ -110,10 +110,12 @@ class DebugConsole:
 
         last = d.last_output_note
         last_label = f"{note_name(last % 12)}({last})" if last is not None else "-"
+        ahead = "  AHEAD" if d.ahead_active else ""
         lines = [
-            f"[seg {d.segment_index + 1}/{d.segment_count} "
-            f"step {d.step_index + 1}/{d.step_count}] "
-            f"{d.current_chord} > {d.next_chord}  SOLO",
+            f"  AIM  {d.aim_chord}{ahead}",
+            f"  NOW  {d.now_chord}   t={d.ticks}",
+            f"  NEXT {d.next_chord}",
+            f"  TR   {d.transport}  {d.advance_mode}  SOLO",
             f"  last: {last_label}  gesture: {d.last_gesture or '-'}  dir: {d.phrase_direction}",
             f"  pending: octave={d.pending_octave:+d} skip={d.pending_skip}",
             f"  core: {' '.join(note_name(pc) for pc in d.core_pcs)}",
@@ -121,6 +123,8 @@ class DebugConsole:
         ]
         if d.resolver_trace:
             lines.append(f"  trace: {d.resolver_trace}")
+        if d.warning:
+            lines.append(f"  WARN : {d.warning}")
         for ev in out.midi_events:
             lines.append("  midi : " + ev.short())
         return "\n".join(lines)

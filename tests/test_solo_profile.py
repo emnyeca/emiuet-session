@@ -68,3 +68,26 @@ def test_chord_profile_still_uses_slots():
     frame = MidiInputMapper(chord).map(MidiMessage("note_on", channel=9, note=36, velocity=127)).frame
     assert frame.key_presses == (0,)  # ChordMode slot mapping intact
     assert frame.solo_gesture is None
+
+
+def test_autofollow_profile_loads_and_maps_ahead():
+    from apps.desktop_debug.midi_input import realtime_input_frame
+    from emiuet_session.core.transport import TransportEvent
+
+    profile = ControllerProfile.load(PROFILES_DIR / "ccp16_autofollow.json")
+    m = MidiInputMapper(profile)
+    assert m.map(on(45)).frame.harmonic_ahead is True  # PAD10
+    assert m.map(on(47)).frame.clear_ahead_pending is True  # PAD12
+    assert m.map(on(50)).frame.resync is True  # PAD15
+    assert m.map(on(36)).frame.solo_gesture is SoloGesture.REPEAT  # PAD1
+
+
+def test_realtime_messages_map_to_transport_frames():
+    from apps.desktop_debug.midi_input import realtime_input_frame
+    from emiuet_session.core.transport import TransportEvent
+
+    assert realtime_input_frame("clock").clock_pulses == 1
+    assert realtime_input_frame("start").transport_event is TransportEvent.START
+    assert realtime_input_frame("continue").transport_event is TransportEvent.CONTINUE
+    assert realtime_input_frame("stop").transport_event is TransportEvent.STOP
+    assert realtime_input_frame("note_on") is None  # not a realtime/transport message

@@ -28,7 +28,9 @@ import time
 
 from emiuet_session.core.frames import InputFrame
 from emiuet_session.core.mode import PerformanceMode
-from emiuet_session.fixtures import sample_performance_model
+from emiuet_session.core.timeline import AheadTargetPolicy
+from emiuet_session.core.transport import AdvanceMode, TransportEvent
+from emiuet_session.fixtures import sample_compiled_timeline, sample_performance_model
 from emiuet_session.runtime import EmiuetCore
 
 from .cli import DebugConsole
@@ -39,30 +41,45 @@ from .midi_input import (
     ProfileError,
     list_input_ports,
     open_input,
+    realtime_input_frame,
 )
 from .midi_output import MidiOutputAdapter, list_output_ports
 
 _SELF_TEST_PROFILE = "ccp16"
 
 
-def _emit(console, result, adapter: MidiOutputAdapter | None, frame: InputFrame | None) -> None:
-    print(f"RAW    : {result.raw}")
-    print(f"MAPPED : {result.mapped if result.mapped else '(unmapped -- not in profile)'}")
-    if frame is None:
-        print()
-        return
+def _consume(console, frame: InputFrame, adapter: MidiOutputAdapter | None):
+    """Process a frame and send its events; return (out, list of OUT log lines)."""
     frame.now_ms = console.clock_ms
     out = console.core.process(frame)
+    out_lines: list[str] = []
+    if adapter is not None:
+        for ev in out.midi_events:
+            out_lines.append(adapter.send_event(ev))
+        if frame.panic:  # also send All Notes Off (CC 123) to channels in use
+            out_lines.extend(adapter.all_notes_off())
+    return out, out_lines
+
+
+def _print_block(raw: str, mapped: str | None, out, out_lines: list[str], console) -> None:
+    print(f"RAW    : {raw}")
+    print(f"MAPPED : {mapped if mapped else '(unmapped -- not in profile)'}")
     for ev in out.midi_events:
         print(f"CORE   : {ev.short()}")
-        if adapter is not None:
-            print(f"OUT    : {adapter.send_event(ev)}")
-    # On a panic, also send All Notes Off (CC 123) to the channels in use.
-    if frame.panic and adapter is not None:
-        for line in adapter.all_notes_off():
-            print(f"OUT    : {line}")
+    for line in out_lines:
+        print(f"OUT    : {line}")
     print(console.render(out))
     print()
+
+
+def _emit(console, result, adapter: MidiOutputAdapter | None, frame: InputFrame | None) -> None:
+    if frame is None:
+        print(f"RAW    : {result.raw}")
+        print(f"MAPPED : {result.mapped if result.mapped else '(unmapped -- not in profile)'}")
+        print()
+        return
+    out, out_lines = _consume(console, frame, adapter)
+    _print_block(result.raw, result.mapped, out, out_lines, console)
 
 
 def _shutdown(console, adapter: MidiOutputAdapter | None, send_all_notes_off: bool) -> None:
@@ -115,10 +132,30 @@ def _solo_script(ch: int) -> list[MidiMessage]:
     ]
 
 
-def _self_test(console, mapper, adapter: MidiOutputAdapter | None, mode: PerformanceMode) -> int:
-    print("Self-test: feeding synthetic CCP16-style messages (no hardware).\n")
-    # CCP16 sends on channel 10 (0-based 9) at FULL LEVEL velocity 127. Match the
-    # profile's channel so the synthetic messages pass its channel filter.
+def _autofollow_script() -> list[tuple[str, str, InputFrame]]:
+    """Synthetic transport + gesture frames demonstrating Auto Follow + Harmonic Ahead."""
+    from emiuet_session.core.solo import SoloGesture
+
+    return [
+        ("FA Start", "start", InputFrame(transport_event=TransportEvent.START)),
+        ("pad repeat", "repeat", InputFrame(solo_gesture=SoloGesture.REPEAT)),
+        ("pad harmonic_ahead", "harmonic_ahead", InputFrame(harmonic_ahead=True)),
+        ("pad core_up (AIM=next chord)", "core_up", InputFrame(solo_gesture=SoloGesture.CORE_UP)),
+        ("pad lpc_up (ahead held)", "lpc_up", InputFrame(solo_gesture=SoloGesture.LPC_UP)),
+        ("F8 x24 -> arrive next step", "clock x24", InputFrame(clock_pulses=24)),
+        ("pad resolve (new chord)", "resolve", InputFrame(solo_gesture=SoloGesture.RESOLVE)),
+        ("FC Stop", "stop", InputFrame(transport_event=TransportEvent.STOP)),
+    ]
+
+
+def _self_test(console, mapper, adapter, mode, advance_mode) -> int:
+    print("Self-test: feeding synthetic messages (no hardware).\n")
+    if advance_mode is AdvanceMode.AUTO_FOLLOW:
+        for raw, mapped, frame in _autofollow_script():
+            out, out_lines = _consume(console, frame, adapter)
+            _print_block(raw, mapped, out, out_lines, console)
+        return 0
+    # CCP16 sends on channel 10 (0-based 9) at FULL LEVEL velocity 127.
     ch = (mapper.profile.midi_channel or 1) - 1
     script = _solo_script(ch) if mode is PerformanceMode.SOLO else _chord_script(ch)
     for msg in script:
@@ -127,8 +164,17 @@ def _self_test(console, mapper, adapter: MidiOutputAdapter | None, mode: Perform
     return 0
 
 
-def run(midi_in, profile, orientation, adapter, send_all_notes_off, mode) -> int:
-    console = DebugConsole(EmiuetCore(sample_performance_model(), mode=mode), orientation=orientation)
+def build_console(mode, advance_mode, ahead_policy, orientation) -> DebugConsole:
+    timeline = sample_compiled_timeline() if advance_mode is AdvanceMode.AUTO_FOLLOW else None
+    core = EmiuetCore(
+        sample_performance_model(), mode=mode, advance_mode=advance_mode, timeline=timeline
+    )
+    core.harmonic_ahead.policy = ahead_policy
+    return DebugConsole(core, orientation=orientation)
+
+
+def run(midi_in, profile, orientation, adapter, send_all_notes_off, mode, advance_mode, ahead_policy) -> int:
+    console = build_console(mode, advance_mode, ahead_policy, orientation)
     mapper = MidiInputMapper(profile)
     port = open_input(midi_in)
     start = time.monotonic()
@@ -136,14 +182,34 @@ def run(midi_in, profile, orientation, adapter, send_all_notes_off, mode) -> int
     out_name = adapter.name if adapter is not None else "(none, log only)"
     print(f"Input : {port.name}")
     print(f"Output: {out_name}")
+    print(f"Mode: {mode.value}  Advance: {advance_mode.value}")
     print("Press Ctrl+C to stop.\n")
     print(console.handle("state"))
     print()
+
+    prev_now, prev_ahead = None, False
     try:
         for msg in port:
             console.clock_ms = (time.monotonic() - start) * 1000.0
+            realtime = realtime_input_frame(msg.type)
+            if realtime is not None:
+                out, out_lines = _consume(console, realtime, adapter)
+                d = out.display
+                # Clock is high-frequency: only render on a meaningful change.
+                changed = (
+                    realtime.transport_event is not None
+                    or bool(out.midi_events)
+                    or d.now_chord != prev_now
+                    or d.ahead_active != prev_ahead
+                )
+                if changed:
+                    _print_block(msg.type, msg.type, out, out_lines, console)
+                prev_now, prev_ahead = d.now_chord, d.ahead_active
+                continue
             result = mapper.map(MidiMessage.from_mido(msg))
             _emit(console, result, adapter, result.frame)
+            if result.frame is not None:
+                prev_now, prev_ahead = console.core.current_context().chord, console.core.harmonic_ahead.active
     except KeyboardInterrupt:
         print("\nStopped.")
     finally:
@@ -200,6 +266,27 @@ def main(argv: list[str] | None = None) -> int:
         help="performance mode (default: chord; bassist is reserved/not implemented)",
     )
     parser.add_argument(
+        "--advance-mode", default="manual", choices=["manual", "auto-follow"],
+        help="manual segment advance, or auto-follow the Digitone-step timeline",
+    )
+    parser.add_argument(
+        "--clock-source", default="midi-clock", choices=["internal", "midi-clock"],
+        help="(auto-follow) clock source; only midi-clock is wired in v0",
+    )
+    parser.add_argument(
+        "--transport-source", default="midi-transport", choices=["manual", "midi-transport"],
+        help="(auto-follow) transport source; only midi-transport is wired in v0",
+    )
+    parser.add_argument(
+        "--timeline-basis", default="digitone-step", choices=["digitone-step", "original-song"],
+        help="(auto-follow) timeline basis; auto-follow expects digitone-step",
+    )
+    parser.add_argument(
+        "--ahead-target", default="next-distinct-chord",
+        choices=["next-distinct-chord", "next-step"],
+        help="Harmonic Ahead target policy",
+    )
+    parser.add_argument(
         "--self-test", action="store_true", help="run synthetic messages, no hardware needed"
     )
     parser.add_argument(
@@ -225,6 +312,13 @@ def main(argv: list[str] | None = None) -> int:
               file=sys.stderr)
         return 2
     mode = PerformanceMode.SOLO if args.mode == "solo" else PerformanceMode.CHORD
+    advance_mode = (
+        AdvanceMode.AUTO_FOLLOW if args.advance_mode == "auto-follow" else AdvanceMode.MANUAL
+    )
+    ahead_policy = (
+        AheadTargetPolicy.NEXT_STEP if args.ahead_target == "next-step"
+        else AheadTargetPolicy.NEXT_DISTINCT_CHORD
+    )
 
     try:
         adapter = _make_adapter(args)
@@ -233,14 +327,17 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     if args.self_test:
-        default_profile = "ccp16_solo" if mode is PerformanceMode.SOLO else _SELF_TEST_PROFILE
+        if advance_mode is AdvanceMode.AUTO_FOLLOW:
+            default_profile = "ccp16_autofollow"
+        elif mode is PerformanceMode.SOLO:
+            default_profile = "ccp16_solo"
+        else:
+            default_profile = _SELF_TEST_PROFILE
         profile = ControllerProfile.load(_default_profile_path(default_profile))
-        print(f"Mode: {args.mode}  |  Loaded profile: {profile.name}")
+        print(f"Mode: {args.mode}  Advance: {args.advance_mode}  |  Profile: {profile.name}")
         print(f"Output: {adapter.name if adapter else '(none, log only)'}\n")
-        console = DebugConsole(
-            EmiuetCore(sample_performance_model(), mode=mode), orientation=args.layout_orientation
-        )
-        rc = _self_test(console, MidiInputMapper(profile), adapter, mode)
+        console = build_console(mode, advance_mode, ahead_policy, args.layout_orientation)
+        rc = _self_test(console, MidiInputMapper(profile), adapter, mode, advance_mode)
         _shutdown(console, adapter, args.send_all_notes_off_on_exit)
         return rc
 
@@ -255,12 +352,12 @@ def main(argv: list[str] | None = None) -> int:
     except ProfileError as exc:
         print(f"profile error: {exc}", file=sys.stderr)
         return 2
-    print(f"Mode: {args.mode}  |  Loaded profile: {profile.name}")
+    print(f"Mode: {args.mode}  Advance: {args.advance_mode}  |  Profile: {profile.name}")
 
     try:
         return run(
             args.midi_in, profile, args.layout_orientation, adapter,
-            args.send_all_notes_off_on_exit, mode,
+            args.send_all_notes_off_on_exit, mode, advance_mode, ahead_policy,
         )
     except RuntimeError as exc:
         print(exc, file=sys.stderr)
