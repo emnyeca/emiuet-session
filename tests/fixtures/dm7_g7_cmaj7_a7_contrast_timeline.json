@@ -1,0 +1,138 @@
+{
+  "schema": "emnyeca.emiuet_session.compiled_timeline",
+  "schema_version": 2,
+  "timeline_basis": "digitone_step",
+  "clock": {
+    "ppqn": 24,
+    "original_tempo": 120.0,
+    "digitone_tempo": 60.0,
+    "meter": "4/4"
+  },
+  "form": {
+    "loop": true,
+    "start_tick": 0,
+    "end_tick": 96
+  },
+  "steps": [
+    {
+      "id": "step_000",
+      "source_step_index": 0,
+      "start_tick": 0,
+      "end_tick": 24,
+      "chord": "Dm7",
+      "default_context_role": "progression",
+      "mod_context_role": "contrast",
+      "contexts": {
+        "progression": {
+          "role": "progression",
+          "display": "Dm7",
+          "scale_name": "Dorian",
+          "scale_root": "D",
+          "hard_context": ["D", "F", "A", "C"],
+          "resolver_core": ["D", "F", "A", "C"],
+          "lpc": ["D", "E", "F", "G", "A", "B", "C"]
+        },
+        "contrast": {
+          "role": "contrast",
+          "display": "Dm7 HW",
+          "scale_name": "Half-Whole Diminished",
+          "scale_root": "D",
+          "selection_policy": "contrast_priority",
+          "hard_context": ["D", "F", "A", "C"],
+          "resolver_core": ["D", "F", "A", "C"],
+          "lpc": ["D", "Eb", "F", "F#", "G#", "A", "B", "C"]
+        }
+      }
+    },
+    {
+      "id": "step_001",
+      "source_step_index": 1,
+      "start_tick": 24,
+      "end_tick": 48,
+      "chord": "G7",
+      "default_context_role": "progression",
+      "mod_context_role": "contrast",
+      "contexts": {
+        "progression": {
+          "role": "progression",
+          "display": "G7",
+          "scale_name": "Mixolydian",
+          "scale_root": "G",
+          "hard_context": ["G", "B", "D", "F"],
+          "resolver_core": ["G", "B", "D", "F"],
+          "lpc": ["G", "A", "B", "C", "D", "E", "F"]
+        },
+        "contrast": {
+          "role": "contrast",
+          "display": "G7 HW",
+          "scale_name": "Half-Whole Diminished",
+          "scale_root": "G",
+          "selection_policy": "contrast_priority",
+          "hard_context": ["G", "B", "D", "F"],
+          "resolver_core": ["G", "B", "D", "F"],
+          "lpc": ["G", "Ab", "Bb", "B", "Db", "D", "E", "F"]
+        }
+      }
+    },
+    {
+      "id": "step_002",
+      "source_step_index": 2,
+      "start_tick": 48,
+      "end_tick": 72,
+      "chord": "Cmaj7",
+      "default_context_role": "progression",
+      "mod_context_role": "contrast",
+      "contexts": {
+        "progression": {
+          "role": "progression",
+          "display": "Cmaj7",
+          "scale_name": "Ionian",
+          "scale_root": "C",
+          "hard_context": ["C", "E", "G", "B"],
+          "resolver_core": ["C", "E", "G", "B"],
+          "lpc": ["C", "D", "E", "F", "G", "A", "B"]
+        },
+        "contrast": {
+          "role": "contrast",
+          "display": "C Lyd",
+          "scale_name": "Lydian",
+          "scale_root": "C",
+          "selection_policy": "contrast_priority",
+          "hard_context": ["C", "E", "G", "B"],
+          "resolver_core": ["C", "E", "G", "B"],
+          "lpc": ["C", "D", "E", "F#", "G", "A", "B"]
+        }
+      }
+    },
+    {
+      "id": "step_003",
+      "source_step_index": 3,
+      "start_tick": 72,
+      "end_tick": 96,
+      "chord": "A7",
+      "default_context_role": "progression",
+      "mod_context_role": "contrast",
+      "contexts": {
+        "progression": {
+          "role": "progression",
+          "display": "A7",
+          "scale_name": "Mixolydian",
+          "scale_root": "A",
+          "hard_context": ["A", "C#", "E", "G"],
+          "resolver_core": ["A", "C#", "E", "G"],
+          "lpc": ["A", "B", "C#", "D", "E", "F#", "G"]
+        },
+        "contrast": {
+          "role": "contrast",
+          "display": "A7 HW",
+          "scale_name": "Half-Whole Diminished",
+          "scale_root": "A",
+          "selection_policy": "contrast_priority",
+          "hard_context": ["A", "C#", "E", "G"],
+          "resolver_core": ["A", "C#", "E", "G"],
+          "lpc": ["A", "Bb", "C", "C#", "Eb", "E", "F#", "G"]
+        }
+      }
+    }
+  ]
+}
