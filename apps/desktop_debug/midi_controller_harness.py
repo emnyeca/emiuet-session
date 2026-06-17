@@ -28,7 +28,7 @@ import time
 
 from emiuet_session.core.frames import InputFrame
 from emiuet_session.core.mode import PerformanceMode
-from emiuet_session.core.timeline import AheadTargetPolicy
+from emiuet_session.core.timeline import AheadTargetPolicy, CompiledTimeline, TimelineBasis
 from emiuet_session.core.transport import AdvanceMode, TransportEvent
 from emiuet_session.fixtures import sample_compiled_timeline, sample_performance_model
 from emiuet_session.runtime import EmiuetCore
@@ -164,8 +164,22 @@ def _self_test(console, mapper, adapter, mode, advance_mode) -> int:
     return 0
 
 
-def build_console(mode, advance_mode, ahead_policy, orientation) -> DebugConsole:
-    timeline = sample_compiled_timeline() if advance_mode is AdvanceMode.AUTO_FOLLOW else None
+def build_console(
+    mode, advance_mode, ahead_policy, orientation, timeline_basis="digitone-step"
+) -> DebugConsole:
+    timeline = None
+    if advance_mode is AdvanceMode.AUTO_FOLLOW:
+        timeline = sample_compiled_timeline()
+        # Honour --timeline-basis so the warning path is observable on hardware:
+        # an original-song basis must actually produce the warning, not silently
+        # behave like digitone-step.
+        if timeline_basis == "original-song":
+            timeline = CompiledTimeline(
+                basis=TimelineBasis.ORIGINAL_SONG,
+                steps=timeline.steps,
+                original_tempo=timeline.original_tempo,
+                digitone_tempo=timeline.digitone_tempo,
+            )
     core = EmiuetCore(
         sample_performance_model(), mode=mode, advance_mode=advance_mode, timeline=timeline
     )
@@ -173,8 +187,11 @@ def build_console(mode, advance_mode, ahead_policy, orientation) -> DebugConsole
     return DebugConsole(core, orientation=orientation)
 
 
-def run(midi_in, profile, orientation, adapter, send_all_notes_off, mode, advance_mode, ahead_policy) -> int:
-    console = build_console(mode, advance_mode, ahead_policy, orientation)
+def run(
+    midi_in, profile, orientation, adapter, send_all_notes_off, mode, advance_mode,
+    ahead_policy, timeline_basis,
+) -> int:
+    console = build_console(mode, advance_mode, ahead_policy, orientation, timeline_basis)
     mapper = MidiInputMapper(profile)
     port = open_input(midi_in)
     start = time.monotonic()
@@ -320,6 +337,14 @@ def main(argv: list[str] | None = None) -> int:
         else AheadTargetPolicy.NEXT_DISTINCT_CHORD
     )
 
+    # v0 wires only midi-clock / midi-transport. Reject the unimplemented sources
+    # explicitly (in Auto Follow) rather than silently ignoring them.
+    if advance_mode is AdvanceMode.AUTO_FOLLOW:
+        if args.clock_source != "midi-clock":
+            parser.error("--clock-source internal is not implemented in v0; use midi-clock")
+        if args.transport_source != "midi-transport":
+            parser.error("--transport-source manual is not implemented in v0; use midi-transport")
+
     try:
         adapter = _make_adapter(args)
     except RuntimeError as exc:
@@ -336,7 +361,9 @@ def main(argv: list[str] | None = None) -> int:
         profile = ControllerProfile.load(_default_profile_path(default_profile))
         print(f"Mode: {args.mode}  Advance: {args.advance_mode}  |  Profile: {profile.name}")
         print(f"Output: {adapter.name if adapter else '(none, log only)'}\n")
-        console = build_console(mode, advance_mode, ahead_policy, args.layout_orientation)
+        console = build_console(
+            mode, advance_mode, ahead_policy, args.layout_orientation, args.timeline_basis
+        )
         rc = _self_test(console, MidiInputMapper(profile), adapter, mode, advance_mode)
         _shutdown(console, adapter, args.send_all_notes_off_on_exit)
         return rc
@@ -358,6 +385,7 @@ def main(argv: list[str] | None = None) -> int:
         return run(
             args.midi_in, profile, args.layout_orientation, adapter,
             args.send_all_notes_off_on_exit, mode, advance_mode, ahead_policy,
+            args.timeline_basis,
         )
     except RuntimeError as exc:
         print(exc, file=sys.stderr)

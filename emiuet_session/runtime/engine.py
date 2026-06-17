@@ -123,12 +123,24 @@ class EmiuetCore:
 
     @property
     def ticks(self) -> int:
+        """Transport playhead. Kept across Stop so FB Continue can resume."""
+        return self._ticks
+
+    def _view_ticks(self) -> int:
+        """Position the resolver/display reads. While STOPPED with a reset-to-head
+        StopPolicy this shows the head (0) WITHOUT destroying the transport playhead
+        (``_ticks``), so a following FB Continue still resumes from where it stopped."""
+        if (
+            self.transport_state is TransportState.STOPPED
+            and self.stop_policy is StopPolicy.RESET_TO_HEAD
+        ):
+            return 0
         return self._ticks
 
     def current_compiled_step(self):
-        """Compiled timeline step under the playhead (Auto Follow only)."""
+        """Compiled timeline step under the (view) playhead (Auto Follow only)."""
         if self.advance_mode is AdvanceMode.AUTO_FOLLOW and self.timeline is not None:
-            return self.timeline.find_step_by_tick(self._ticks)
+            return self.timeline.find_step_by_tick(self._view_ticks())
         return None
 
     def current_context(self) -> ChordContext:
@@ -289,11 +301,11 @@ class EmiuetCore:
             self.pending.reset()
             return []
         if event is TransportEvent.STOP:
+            # 停止。notes/pending/ahead は clear するが、transport playhead は維持する
+            # （FB Continue が続きから再開できるように）。head 表示は _view_ticks で行う。
             self.transport_state = TransportState.STOPPED
             self.harmonic_ahead.clear()
             self.pending.reset()
-            if self.stop_policy is StopPolicy.RESET_TO_HEAD:
-                self._ticks = 0
             return self._all_notes_off()
         return []
 
@@ -460,7 +472,7 @@ class EmiuetCore:
             resolver_trace=self._solo_trace,
             advance_mode=self.advance_mode.value,
             transport=self.transport_state.value,
-            ticks=self._ticks,
+            ticks=self._view_ticks(),
             now_chord=now.chord,
             aim_chord=aim.chord,
             ahead_active=self.harmonic_ahead.active,

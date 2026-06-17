@@ -29,13 +29,27 @@ MIDI Realtime の受信は desktop adapter 側で行い、core へは抽象 `Tra
 TransportState: STOPPED / RUNNING
 ```
 
-- **FA Start**: 頭から再生。`RUNNING`、playhead を 0 へ reset、harmonic ahead /
-  pending / solo cursor を clear、全音 NoteOff。
-- **FB Continue**: 続きから再生。**Start 扱いにしない**（playhead を reset しない）。
-  事故防止のため harmonic ahead / pending は clear する。
+- **FA Start**: 頭から再生。`RUNNING`、transport playhead を 0 へ reset、harmonic
+  ahead / pending / solo cursor を clear、全音 NoteOff。
+- **FB Continue**: 続きから再生。**Start 扱いにしない**（transport playhead を維持し、
+  続きから再開）。事故防止のため harmonic ahead / pending は clear する。
 - **FC Stop**: `STOPPED`、全音 NoteOff、harmonic ahead / pending を clear。
-  `StopPolicy = reset_to_head`（既定）なら playhead を 0 へ。
+  **transport playhead は維持**する（次の Continue が続きから再開できるように）。
 - **F8 Clock**: `RUNNING` 中のみ tick を進める。`STOPPED` 中は進めない。
+
+### transport playhead と表示の分離（StopPolicy）
+
+実機の FB Continue が「本当に続き再生」なので、Stop で transport playhead を破壊しては
+いけません。一方で「Stop したら見た目は頭に戻したい」要件もあります。そこで両者を分離
+します。
+
+- **transport playhead**（`ticks`）: Continue 再開位置。Start でのみ 0、Stop/Continue で維持。
+- **display / resolver view**（`_view_ticks`）: `StopPolicy.reset_to_head`（既定）では
+  STOPPED 中だけ head（tick 0）を見せる。`keep_position` では停止位置を見せる。
+
+これにより、Stop 後の表示は head でも、続く Continue は元の位置から再開します。
+（`tests/test_transport.py` の `test_stop_then_continue_keeps_playhead_for_digitone_continue`
+ 等で保証。）
 
 > Continue を Start 扱いすると同期が破綻するため、Transport テストで必ず保証します
 > （`tests/test_transport.py`）。

@@ -82,6 +82,28 @@ def test_autofollow_profile_loads_and_maps_ahead():
     assert m.map(on(36)).frame.solo_gesture is SoloGesture.REPEAT  # PAD1
 
 
+def test_build_console_honours_timeline_basis():
+    from apps.desktop_debug.midi_controller_harness import build_console
+    from emiuet_session.core.frames import InputFrame
+    from emiuet_session.core.mode import PerformanceMode
+    from emiuet_session.core.timeline import AheadTargetPolicy, TimelineBasis
+    from emiuet_session.core.transport import AdvanceMode
+
+    digitone = build_console(
+        PerformanceMode.SOLO, AdvanceMode.AUTO_FOLLOW,
+        AheadTargetPolicy.NEXT_DISTINCT_CHORD, "two-row", "digitone-step",
+    )
+    assert digitone.core.timeline.basis is TimelineBasis.DIGITONE_STEP
+    assert digitone.core.process(InputFrame()).display.warning == ""
+
+    original = build_console(
+        PerformanceMode.SOLO, AdvanceMode.AUTO_FOLLOW,
+        AheadTargetPolicy.NEXT_DISTINCT_CHORD, "two-row", "original-song",
+    )
+    assert original.core.timeline.basis is TimelineBasis.ORIGINAL_SONG
+    assert original.core.process(InputFrame()).display.warning  # warns
+
+
 def test_realtime_messages_map_to_transport_frames():
     from apps.desktop_debug.midi_input import realtime_input_frame
     from emiuet_session.core.transport import TransportEvent
