@@ -101,7 +101,7 @@ def test_build_console_honours_timeline_basis():
         AheadTargetPolicy.NEXT_DISTINCT_CHORD, "two-row", "original-song",
     )
     assert original.core.timeline.basis is TimelineBasis.ORIGINAL_SONG
-    assert original.core.process(InputFrame()).display.warning  # warns
+    assert original.core.process(InputFrame()).display.warning == ""
 
 
 def test_realtime_messages_map_to_transport_frames():

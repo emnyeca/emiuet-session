@@ -62,12 +62,12 @@ def test_does_not_advance_on_original_tempo_alone():
     assert c.ticks == 0
 
 
-def test_unknown_basis_warns():
+def test_segment_map_basis_warns_in_auto_follow():
     dm7 = ChordContext("Dm7", (2, 5, 9, 0), (2, 4, 5, 7, 9, 11, 0))
-    tl = CompiledTimeline(TimelineBasis.ORIGINAL_SONG, [CompiledHarmonicStep("s0", 0, 24, dm7)])
+    tl = CompiledTimeline(TimelineBasis.SEGMENT_MAP, [CompiledHarmonicStep("s0", 0, 24, dm7)])
     c = _auto_core(tl)
     out = c.process(InputFrame())
-    assert "timeline_basis" in out.display.warning
+    assert "segment-map" in out.display.warning
 
 
 def test_missing_timeline_warns():
