@@ -37,7 +37,10 @@ from ..core.timeline import (
     ChordContext,
     CompiledTimeline,
     HarmonicAhead,
+    RuntimeTransposePolicy,
     TimelineBasis,
+    validate_transpose_offset,
+    transpose_context,
 )
 from ..core.transport import (
     AdvanceMode,
@@ -69,6 +72,8 @@ class EmiuetCore:
         velocity: int = 100,
         tempo_bpm: float | None = None,
         anchor_midi: int = 60,
+        transpose_offset_semitones: int = 0,
+        runtime_transpose_policy: RuntimeTransposePolicy = RuntimeTransposePolicy.ALLOWED,
     ) -> None:
         self.model = model
         self.mode = mode
@@ -79,6 +84,8 @@ class EmiuetCore:
         self.velocity = velocity
         self.anchor_midi = anchor_midi
         self.tempo_bpm = tempo_bpm if tempo_bpm is not None else model.default_tempo
+        self.transpose_offset_semitones = validate_transpose_offset(transpose_offset_semitones)
+        self.runtime_transpose_policy = runtime_transpose_policy
 
         self.segment_index = 0
         self.step_index = 0
@@ -149,9 +156,11 @@ class EmiuetCore:
         PerformanceModel's current step (Manual)."""
         compiled = self.current_compiled_step()
         if compiled is not None:
-            return compiled.chord_context
+            return self._apply_runtime_transpose(compiled.chord_context)
         step = self.current_step()
-        return ChordContext(step.chord, step.core_pcs, step.lpc, step.scale_collection)
+        return self._apply_runtime_transpose(
+            ChordContext(step.chord, step.core_pcs, step.lpc, step.scale_collection)
+        )
 
     def _resolved_step(self):
         """Which compiled step the resolver reads: the Harmonic Ahead target when
@@ -170,8 +179,17 @@ class EmiuetCore:
         if step is None:
             return self.current_context()  # Manual: no contrast contexts
         if self.contrast_mod and step.has_context(step.mod_context_role):
-            return step.context_for(step.mod_context_role)
-        return step.context_for(step.default_context_role) or step.chord_context
+            context = step.context_for(step.mod_context_role)
+        else:
+            context = step.context_for(step.default_context_role) or step.chord_context
+        return self._apply_runtime_transpose(context)
+
+    def _apply_runtime_transpose(self, context: ChordContext) -> ChordContext:
+        if self.transpose_offset_semitones == 0:
+            return context
+        if self.runtime_transpose_policy is RuntimeTransposePolicy.LOCKED:
+            return context
+        return transpose_context(context, self.transpose_offset_semitones)
 
     def next_context_chord(self) -> str:
         compiled = self.current_compiled_step()
@@ -506,7 +524,7 @@ class EmiuetCore:
 
     def _timeline_warning(self) -> str:
         if self.advance_mode is not AdvanceMode.AUTO_FOLLOW:
-            return ""
+            return self._transpose_warning()
         if self.timeline is None:
             return "Auto Follow expects a Digitone-step-aligned timeline, but none is loaded."
         if self.timeline.basis is not TimelineBasis.DIGITONE_STEP:
@@ -515,4 +533,20 @@ class EmiuetCore:
                 f"Current timeline_basis is {self.timeline.basis.value}. "
                 "Chord cursor may not sync with Digitone II."
             )
+        transpose_warning = self._transpose_warning()
+        if transpose_warning:
+            return transpose_warning
+        return ""
+
+    def _transpose_warning(self) -> str:
+        if (
+            self.transpose_offset_semitones != 0
+            and self.runtime_transpose_policy is RuntimeTransposePolicy.LOCKED
+        ):
+            return "Runtime Song Transpose is locked for this timeline."
+        if (
+            self.transpose_offset_semitones != 0
+            and self.runtime_transpose_policy is RuntimeTransposePolicy.WARN
+        ):
+            return "Runtime Song Transpose may diverge from the external device timeline."
         return ""
