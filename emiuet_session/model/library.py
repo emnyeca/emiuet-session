@@ -50,11 +50,18 @@ class SongPayload:
     timelines: tuple[SessionTimeline, ...] = ()
     default_timeline_id: str | None = None
 
+    def __post_init__(self) -> None:
+        if not self.timelines:
+            raise ValueError("SongPayload must have at least one timeline")
+        ids = [timeline.id for timeline in self.timelines]
+        if len(ids) != len(set(ids)):
+            raise ValueError("SongPayload timeline ids must be unique")
+        if self.default_timeline_id is not None and self.default_timeline_id not in set(ids):
+            raise ValueError("default_timeline_id must reference an existing timeline")
+
     def get_timeline(self, timeline_id: str | None = None) -> SessionTimeline:
         selected_id = timeline_id or self.default_timeline_id
         if selected_id is None:
-            if not self.timelines:
-                raise KeyError(f"song has no timelines: {self.song_id}")
             return self.timelines[0]
         for timeline in self.timelines:
             if timeline.id == selected_id:

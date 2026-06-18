@@ -246,7 +246,10 @@ class EmiuetCore:
         compiled = self.current_compiled_step()
         if compiled is not None and self.timeline is not None:
             nxt = self.timeline.find_next_distinct_chord(compiled)
-            return nxt.chord_context.chord if nxt else ""
+            if nxt is None:
+                return ""
+            context = self._apply_runtime_transpose(nxt.chord_context)
+            return context.display or context.chord
         return self.current_step().next_chord
 
     def active_notes(self) -> tuple[int, ...]:

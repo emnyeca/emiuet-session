@@ -135,6 +135,29 @@ def test_song_payload_can_hold_multiple_timelines():
     assert payload.timeline_by_id("digitone").runtime_transpose_policy is RuntimeTransposePolicy.LOCKED
 
 
+def test_song_payload_rejects_invalid_timeline_invariants():
+    timeline = SessionTimeline(
+        "clock_song",
+        TimelineAdvanceMode.CLOCK_SONG,
+        TimelineBasis.ORIGINAL_SONG,
+        _clock_song_timeline(),
+    )
+    with pytest.raises(ValueError, match="at least one timeline"):
+        SongPayload("empty", "Empty", "C", 120.0, "4/4", ())
+    with pytest.raises(ValueError, match="unique"):
+        SongPayload("dupe", "Dupe", "C", 120.0, "4/4", (timeline, timeline))
+    with pytest.raises(ValueError, match="default_timeline_id"):
+        SongPayload(
+            "bad_default",
+            "Bad Default",
+            "C",
+            120.0,
+            "4/4",
+            (timeline,),
+            default_timeline_id="missing",
+        )
+
+
 def test_library_index_keeps_metadata_without_payloads():
     index = SongLibraryIndex(
         [
@@ -264,8 +287,10 @@ def test_clock_song_runtime_uses_original_song_tick_boundaries():
     )
     core.process(InputFrame(transport_event=TransportEvent.START))
     assert core.current_context().chord == "Dm7 +2"
+    assert core.process(InputFrame()).display.next_chord == "G7 +2"
     core.process(InputFrame(clock_pulses=96))
     assert core.current_context().chord == "G7 +2"
+    assert core.process(InputFrame()).display.next_chord == "Cmaj7 +2"
     core.process(InputFrame(clock_pulses=96))
     assert core.current_context().chord == "Cmaj7 +2"
     core.process(InputFrame(clock_pulses=96))
