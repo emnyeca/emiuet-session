@@ -38,6 +38,7 @@ from ..core.timeline import (
     CompiledTimeline,
     HarmonicAhead,
     RuntimeTransposePolicy,
+    TimelineAdvanceMode,
     TimelineBasis,
     validate_transpose_offset,
     transpose_context,
@@ -73,7 +74,7 @@ class EmiuetCore:
         tempo_bpm: float | None = None,
         anchor_midi: int = 60,
         transpose_offset_semitones: int = 0,
-        runtime_transpose_policy: RuntimeTransposePolicy = RuntimeTransposePolicy.ALLOWED,
+        runtime_transpose_policy: RuntimeTransposePolicy | None = None,
     ) -> None:
         self.model = model
         self.mode = mode
@@ -85,7 +86,11 @@ class EmiuetCore:
         self.anchor_midi = anchor_midi
         self.tempo_bpm = tempo_bpm if tempo_bpm is not None else model.default_tempo
         self.transpose_offset_semitones = validate_transpose_offset(transpose_offset_semitones)
-        self.runtime_transpose_policy = runtime_transpose_policy
+        self.runtime_transpose_policy = (
+            runtime_transpose_policy
+            if runtime_transpose_policy is not None
+            else self._default_transpose_policy_for_runtime(advance_mode, timeline)
+        )
 
         self.segment_index = 0
         self.step_index = 0
@@ -111,6 +116,52 @@ class EmiuetCore:
         self._solo_note: int | None = None
         self._solo_gesture: SoloGesture | None = None
         self._solo_trace: str = ""
+
+    @classmethod
+    def from_session_timeline(
+        cls,
+        model: PerformanceModel,
+        session_timeline,
+        *,
+        mode: PerformanceMode = PerformanceMode.CHORD,
+        stop_policy: StopPolicy = StopPolicy.RESET_TO_HEAD,
+        channel: int = 1,
+        velocity: int = 100,
+        tempo_bpm: float | None = None,
+        anchor_midi: int = 60,
+        transpose_offset_semitones: int = 0,
+    ) -> "EmiuetCore":
+        advance_mode = (
+            AdvanceMode.MANUAL
+            if session_timeline.advance_mode is TimelineAdvanceMode.MANUAL
+            else AdvanceMode.AUTO_FOLLOW
+        )
+        return cls(
+            model,
+            mode=mode,
+            advance_mode=advance_mode,
+            timeline=session_timeline.compiled_timeline,
+            stop_policy=stop_policy,
+            channel=channel,
+            velocity=velocity,
+            tempo_bpm=tempo_bpm,
+            anchor_midi=anchor_midi,
+            transpose_offset_semitones=transpose_offset_semitones,
+            runtime_transpose_policy=session_timeline.runtime_transpose_policy,
+        )
+
+    @staticmethod
+    def _default_transpose_policy_for_runtime(
+        advance_mode: AdvanceMode,
+        timeline: CompiledTimeline | None,
+    ) -> RuntimeTransposePolicy:
+        if timeline is not None:
+            if timeline.basis is TimelineBasis.DIGITONE_STEP:
+                return RuntimeTransposePolicy.LOCKED
+            return RuntimeTransposePolicy.ALLOWED
+        if advance_mode is AdvanceMode.AUTO_FOLLOW:
+            return RuntimeTransposePolicy.LOCKED
+        return RuntimeTransposePolicy.ALLOWED
 
     # ---- accessors -----------------------------------------------------
 
@@ -527,11 +578,11 @@ class EmiuetCore:
             return self._transpose_warning()
         if self.timeline is None:
             return "Auto Follow expects a Digitone-step-aligned timeline, but none is loaded."
-        if self.timeline.basis is not TimelineBasis.DIGITONE_STEP:
+        if self.timeline.basis is TimelineBasis.SEGMENT_MAP:
             return (
-                "Auto Follow expects a Digitone-step-aligned timeline. "
+                "Auto Follow cannot use a manual segment-map timeline. "
                 f"Current timeline_basis is {self.timeline.basis.value}. "
-                "Chord cursor may not sync with Digitone II."
+                "Use a manual advance mode for this timeline."
             )
         transpose_warning = self._transpose_warning()
         if transpose_warning:

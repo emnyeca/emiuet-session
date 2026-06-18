@@ -76,6 +76,9 @@ def parse_song_payload(data: dict) -> SongPayload:
         default_tempo=float(data.get("default_tempo", 120.0)),
         meter=str(data.get("meter") or "4/4"),
         timelines=tuple(timelines),
+        default_timeline_id=(
+            None if data.get("default_timeline_id") is None else str(data.get("default_timeline_id"))
+        ),
     )
 
 
@@ -125,4 +128,3 @@ def parse_library_index(data: dict) -> SongLibraryIndex:
             )
         )
     return SongLibraryIndex(entries)
-
