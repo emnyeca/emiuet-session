@@ -11,6 +11,16 @@ Usage (PowerShell; use a backtick ` for line continuation, or one line)::
         --midi-out "H12MIDI-Pro 1" `
         --profile apps/desktop_debug/controller_profiles/ccp16.json
 
+    # load an Emiuet Session SongPayload and select a timeline
+    python -m apps.desktop_debug.midi_controller_harness `
+        --mode solo `
+        --song-payload path/to/contrast_demo.song.json `
+        --timeline-id clock_song `
+        --transpose 2 `
+        --midi-in "H12MIDI-Pro 1" `
+        --midi-out "H12MIDI-Pro 1" `
+        --profile apps/desktop_debug/controller_profiles/ccp16_autofollow.json
+
     # mapping + core only, no hardware (synthetic messages); add --dry-run for OUT log
     python -m apps.desktop_debug.midi_controller_harness --self-test
 
@@ -32,6 +42,7 @@ from emiuet_session.core.timeline import AheadTargetPolicy, CompiledTimeline, Ti
 from emiuet_session.core.timeline_io import load_compiled_timeline
 from emiuet_session.core.transport import AdvanceMode, TransportEvent
 from emiuet_session.fixtures import sample_compiled_timeline, sample_performance_model
+from emiuet_session.model.library_io import load_song_payload
 from emiuet_session.runtime import EmiuetCore
 
 from .cli import DebugConsole
@@ -170,38 +181,64 @@ def _self_test(console, mapper, adapter, mode, advance_mode) -> int:
 
 def build_console(
     mode, advance_mode, ahead_policy, orientation, timeline_basis="digitone-step",
-    timeline_path=None,
+    timeline_path=None, song_payload_path=None, timeline_id=None, transpose=0,
 ) -> DebugConsole:
     timeline = None
+    selected_session_timeline = None
+    if song_payload_path:
+        song = load_song_payload(song_payload_path)
+        selected_session_timeline = song.get_timeline(timeline_id)
+
     if advance_mode is AdvanceMode.AUTO_FOLLOW:
         # A real EUB Changes export (--timeline) takes precedence; otherwise use the
         # built-in sample compiled timeline.
-        timeline = (
-            load_compiled_timeline(timeline_path) if timeline_path else sample_compiled_timeline()
-        )
-        # Honour --timeline-basis so the warning path is observable on hardware:
-        # an original-song basis must actually produce the warning, not silently
-        # behave like digitone-step.
-        if timeline_basis == "original-song":
-            timeline = CompiledTimeline(
-                basis=TimelineBasis.ORIGINAL_SONG,
-                steps=timeline.steps,
-                original_tempo=timeline.original_tempo,
-                digitone_tempo=timeline.digitone_tempo,
+        if selected_session_timeline is None:
+            timeline = (
+                load_compiled_timeline(timeline_path) if timeline_path else sample_compiled_timeline()
             )
-    core = EmiuetCore(
-        sample_performance_model(), mode=mode, advance_mode=advance_mode, timeline=timeline
-    )
+            # Developer override for exercising original-song basis with the sample data.
+            if timeline_basis == "original-song":
+                timeline = CompiledTimeline(
+                    basis=TimelineBasis.ORIGINAL_SONG,
+                    steps=timeline.steps,
+                    original_tempo=timeline.original_tempo,
+                    digitone_tempo=timeline.digitone_tempo,
+                )
+
+    model = sample_performance_model()
+    if selected_session_timeline is not None:
+        core = EmiuetCore.from_session_timeline(
+            model,
+            selected_session_timeline,
+            mode=mode,
+            transpose_offset_semitones=transpose,
+        )
+    else:
+        core = EmiuetCore(
+            model,
+            mode=mode,
+            advance_mode=advance_mode,
+            timeline=timeline,
+            transpose_offset_semitones=transpose,
+        )
     core.harmonic_ahead.policy = ahead_policy
     return DebugConsole(core, orientation=orientation)
 
 
 def run(
     midi_in, profile, orientation, adapter, send_all_notes_off, mode, advance_mode,
-    ahead_policy, timeline_basis, timeline_path,
+    ahead_policy, timeline_basis, timeline_path, song_payload_path, timeline_id, transpose,
 ) -> int:
     console = build_console(
-        mode, advance_mode, ahead_policy, orientation, timeline_basis, timeline_path
+        mode,
+        advance_mode,
+        ahead_policy,
+        orientation,
+        timeline_basis,
+        timeline_path,
+        song_payload_path,
+        timeline_id,
+        transpose,
     )
     mapper = MidiInputMapper(profile)
     port = open_input(midi_in)
@@ -313,6 +350,18 @@ def main(argv: list[str] | None = None) -> int:
         "--timeline", help="(auto-follow) path to a compiled timeline JSON from EUB Changes",
     )
     parser.add_argument(
+        "--song-payload", help="path to an Emiuet Session SongPayload JSON from EUB Changes",
+    )
+    parser.add_argument(
+        "--timeline-id", help="timeline id inside --song-payload; defaults to payload default/first timeline",
+    )
+    parser.add_argument(
+        "--transpose",
+        type=int,
+        default=0,
+        help="Runtime Song Transpose offset in semitones (-12..+12)",
+    )
+    parser.add_argument(
         "--ahead-target", default="next-distinct-chord",
         choices=["next-distinct-chord", "next-step"],
         help="Harmonic Ahead target policy",
@@ -377,7 +426,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Output: {adapter.name if adapter else '(none, log only)'}\n")
         console = build_console(
             mode, advance_mode, ahead_policy, args.layout_orientation, args.timeline_basis,
-            args.timeline,
+            args.timeline, args.song_payload, args.timeline_id, args.transpose,
         )
         rc = _self_test(console, MidiInputMapper(profile), adapter, mode, advance_mode)
         _shutdown(console, adapter, args.send_all_notes_off_on_exit)
@@ -400,7 +449,7 @@ def main(argv: list[str] | None = None) -> int:
         return run(
             args.midi_in, profile, args.layout_orientation, adapter,
             args.send_all_notes_off_on_exit, mode, advance_mode, ahead_policy,
-            args.timeline_basis, args.timeline,
+            args.timeline_basis, args.timeline, args.song_payload, args.timeline_id, args.transpose,
         )
     except RuntimeError as exc:
         print(exc, file=sys.stderr)

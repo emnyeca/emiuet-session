@@ -14,15 +14,90 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 
+from .pitch import NOTE_NAMES_FLAT, NOTE_NAMES_SHARP, note_name
+
 
 class TimelineBasis(Enum):
-    ORIGINAL_SONG = "original_song"  # 参考用。Auto Follow では非推奨。
+    ORIGINAL_SONG = "original_song"
+    SEGMENT_MAP = "segment_map"
     DIGITONE_STEP = "digitone_step"  # Auto Follow が期待する基準。
+
+
+class TimelineAdvanceMode(Enum):
+    CLOCK_SONG = "clock_song"
+    MANUAL = "manual"
+    DEVICE_STEP = "device_step"
+
+
+class RuntimeTransposePolicy(Enum):
+    ALLOWED = "allowed"
+    WARN = "warn"
+    LOCKED = "locked"
 
 
 class AheadTargetPolicy(Enum):
     NEXT_DISTINCT_CHORD = "next_distinct_chord"  # 既定
     NEXT_STEP = "next_step"
+
+
+_NAME_TO_PC = {name: pc for pc, name in enumerate(NOTE_NAMES_SHARP)}
+_NAME_TO_PC.update({name: pc for pc, name in enumerate(NOTE_NAMES_FLAT)})
+
+
+def default_runtime_transpose_policy(
+    advance_mode: TimelineAdvanceMode,
+    timeline_basis: TimelineBasis,
+) -> RuntimeTransposePolicy:
+    if (
+        advance_mode is TimelineAdvanceMode.DEVICE_STEP
+        or timeline_basis is TimelineBasis.DIGITONE_STEP
+    ):
+        return RuntimeTransposePolicy.LOCKED
+    return RuntimeTransposePolicy.ALLOWED
+
+
+def validate_transpose_offset(semitones: int) -> int:
+    if not isinstance(semitones, int):
+        raise TypeError("transpose_offset_semitones must be an int")
+    if not -12 <= semitones <= 12:
+        raise ValueError("transpose_offset_semitones must be in -12..+12")
+    return semitones
+
+
+def _transpose_scale_root(scale_root: str, semitones: int) -> str:
+    if not scale_root:
+        return ""
+    pc = _NAME_TO_PC.get(scale_root)
+    if pc is None:
+        return scale_root
+    return note_name(pc + semitones, prefer_flat=False)
+
+
+def _transpose_label(label: str, semitones: int) -> str:
+    if not label or semitones == 0:
+        return label
+    sign = "+" if semitones > 0 else ""
+    return f"{label} {sign}{semitones}"
+
+
+def transpose_context(context: "ChordContext", semitones: int) -> "ChordContext":
+    semitones = validate_transpose_offset(semitones)
+    if semitones == 0:
+        return context
+
+    def shift(pcs: tuple[int, ...]) -> tuple[int, ...]:
+        return tuple((pc + semitones) % 12 for pc in pcs)
+
+    return ChordContext(
+        chord=_transpose_label(context.chord, semitones),
+        core_pcs=shift(context.core_pcs),
+        lpc=shift(context.lpc),
+        scale_collection=context.scale_collection,
+        role=context.role,
+        display=_transpose_label(context.display, semitones),
+        scale_root=_transpose_scale_root(context.scale_root, semitones),
+        hard_context=shift(context.hard_context),
+    )
 
 
 @dataclass(frozen=True)

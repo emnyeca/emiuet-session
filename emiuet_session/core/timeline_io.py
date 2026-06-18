@@ -113,7 +113,11 @@ def _parse_step(raw: dict, index: int) -> CompiledHarmonicStep:
     )
 
 
-def parse_compiled_timeline(data: dict) -> CompiledTimeline:
+def parse_compiled_timeline(
+    data: dict,
+    *,
+    expected_basis: str | None = "digitone_step",
+) -> CompiledTimeline:
     if not isinstance(data, dict):
         raise TimelineSchemaError("compiled timeline must be a JSON object")
     if data.get("schema") != SCHEMA_NAME:
@@ -123,10 +127,15 @@ def parse_compiled_timeline(data: dict) -> CompiledTimeline:
             f"unsupported schema_version {data.get('schema_version')!r}; "
             f"supported: {SUPPORTED_SCHEMA_VERSIONS}"
         )
-    if data.get("timeline_basis") != "digitone_step":
+    raw_basis = data.get("timeline_basis")
+    if expected_basis is not None and raw_basis != expected_basis:
         raise TimelineSchemaError(
-            f"timeline_basis must be 'digitone_step', got {data.get('timeline_basis')!r}"
+            f"timeline_basis must be {expected_basis!r}, got {raw_basis!r}"
         )
+    try:
+        basis = TimelineBasis(raw_basis)
+    except ValueError as exc:
+        raise TimelineSchemaError(f"unsupported timeline_basis {raw_basis!r}") from exc
 
     raw_steps = data.get("steps")
     if not isinstance(raw_steps, list) or not raw_steps:
@@ -141,7 +150,7 @@ def parse_compiled_timeline(data: dict) -> CompiledTimeline:
 
     clock = data.get("clock", {})
     return CompiledTimeline(
-        basis=TimelineBasis.DIGITONE_STEP,
+        basis=basis,
         steps=steps,
         original_tempo=clock.get("original_tempo"),
         digitone_tempo=clock.get("digitone_tempo"),
