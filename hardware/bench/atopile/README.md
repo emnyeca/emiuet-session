@@ -16,22 +16,27 @@ ato build
 ```
 
 > `ato` (atopile) must be installed separately. See https://atopile.io for install
-> instructions. This scaffold was authored without a local `ato` install, so the
-> build has **not** been run here — see "Version note" below.
+> instructions. This scaffold has been confirmed to **build successfully with
+> atopile `0.15.7`** (`ato build` → success). The remaining warnings are about
+> unspecified footprints / parts and are **expected** for a wiring-intent-only
+> scaffold — see "Version note" below.
 >
-> `ato`（atopile）は別途インストールが必要です。このスキャフォールドはローカルに `ato` が
-> 無い状態で作成したため、ビルドは未実行です（下記「Version note」参照）。
+> `ato`（atopile）は別途インストールが必要です。このスキャフォールドは **atopile
+> `0.15.7` で `ato build` の成功を確認済み** です。残る warnings は footprint / part
+> 未指定に関するもので、配線意図のみの scaffold としては **想定内** です（下記
+> 「Version note」参照）。
 
 ## Version note / バージョン注意
 
-atopile's `ato.yaml` schema and import syntax have changed across releases. If the
-build fails:
+This scaffold builds on atopile `0.15.7`. atopile's `ato.yaml` schema and import
+syntax have changed across releases, so on a **different** version the build may
+need small adjustments:
 
 1. Run `ato --version`.
 2. Compare [`ato.yaml`](ato.yaml) keys against your version's expected schema and
    adjust if needed (e.g. `requires-atopile` vs `ato-version`, `builds.*.entry`).
-3. If imports fail, note that this scaffold uses the
-   `import <Name> from "<file>.ato"` form; adjust to your version's syntax if needed.
+3. This scaffold uses the current `from "<file>.ato" import <Name>` import form
+   (one name per line); adjust to your version's syntax if it differs.
 
 These files deliberately stay minimal so they are easy to repair against whatever
 atopile version you have installed.

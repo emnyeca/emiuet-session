@@ -49,8 +49,9 @@ module BenchPowerRails:
     power = new Power
 
 module ReservedTrsMidiPins:
-    # Phase B reservation ONLY: Serial1 pins 0/1 for TRS MIDI.
-    # Declared so the reservation is explicit, but NOT a MIDI circuit and NOT wired
-    # to any TRS hardware in Phase A.
+    # Logical reservation placeholder for Serial1 pins 0/1 (TRS MIDI).
+    # Connecting p0/p1 here only makes the reservation visible in the wiring model.
+    # It adds NO TRS MIDI circuit, jack, optocoupler, transistor, or external MIDI
+    # wiring in Phase A. Physical TRS MIDI wiring remains Phase B.
     signal rx  # Teensy pin 0 / RX1
     signal tx  # Teensy pin 1 / TX1

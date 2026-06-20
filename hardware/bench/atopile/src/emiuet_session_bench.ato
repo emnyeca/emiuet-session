@@ -59,6 +59,9 @@ module EmiuetSessionBench:
     rails.power ~ lcd.power
 
     # --- Reserved for Phase B TRS MIDI (Serial1, pins 0/1) ---
-    # Reservation only: no TRS MIDI circuit / jack is added in Phase A.
+    # p0/p1 are tied ONLY to a logical reservation placeholder so that the Serial1
+    # pin reservation is visible in the wiring model. This does NOT add any TRS MIDI
+    # circuit, jack, optocoupler, transistor, or external MIDI wiring in Phase A.
+    # The physical wiring for TRS MIDI remains Phase B.
     teensy.p0 ~ midi.rx
     teensy.p1 ~ midi.tx
