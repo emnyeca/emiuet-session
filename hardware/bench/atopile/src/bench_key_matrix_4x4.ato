@@ -7,7 +7,8 @@
 # Per-key topology (anti-ghosting): row -> switch -> diode(anode->cathode) -> col.
 # Keep the diode orientation consistent with the firmware scan direction.
 
-import Switch, Diode from "connectors.ato"
+from "connectors.ato" import Switch
+from "connectors.ato" import Diode
 
 module BenchKeyMatrix4x4:
     # Rows (driven during scan) and columns (read during scan).

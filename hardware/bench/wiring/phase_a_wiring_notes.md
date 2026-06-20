@@ -22,6 +22,16 @@ Phase A ベンチを組むときの実務メモです。
 - Keep the orientation of all key diodes consistent (see the atopile scaffold and
   firmware for the assumed scan direction).
 
+> ⚠️ **Before soldering the key matrix**, confirm the diode orientation matches the
+> firmware scanner (Phase A: columns `INPUT_PULLUP`, rows driven LOW one at a time,
+> pressed key read as LOW on its column). If you change the scan direction on the
+> firmware side, update **both** these wiring notes **and** the atopile scaffold
+> ([`../atopile/src/bench_key_matrix_4x4.ato`](../atopile/src/bench_key_matrix_4x4.ato)).
+>
+> ⚠️ **キーマトリクスを半田付けする前に**、diode orientation が firmware scanner と
+> 一致していることを確認してください。firmware 側の scan direction を変更する場合は、
+> この wiring notes と atopile scaffold の **両方** を更新してください。
+
 ## Breadboard usage / ブレッドボードの使用
 
 - A breadboard is **acceptable only for early OLED / encoder tests**, where

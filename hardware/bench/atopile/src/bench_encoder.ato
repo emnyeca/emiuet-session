@@ -1,7 +1,7 @@
 # EC11-style push rotary encoder for the Phase A bench.
 # Wiring intent only: quadrature A/B plus a momentary push switch.
 
-import Power from "connectors.ato"
+from "connectors.ato" import Power
 
 module BenchEncoder:
     signal a    # quadrature A

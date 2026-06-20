@@ -4,7 +4,7 @@
 # Phase A bench so the top level can express wiring intent. All signals are 3.3 V;
 # Teensy 4.1 GPIO is NOT 5 V tolerant.
 
-import Power from "connectors.ato"
+from "connectors.ato" import Power
 
 module Teensy41Header:
     # 3.3 V supply + ground.

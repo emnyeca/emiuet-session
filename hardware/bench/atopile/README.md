@@ -61,3 +61,18 @@ atopile version you have installed.
 - 配線層には **演奏キーの意味を持たせません**（ノート/発音/コードの意味を含めない）。
 - 将来のホールエフェクト入力基板は **スキャナ層を置き換える** もので、演奏ロジックは置き換えません。
 - ピン **0/1** は **TRS MIDI（Phase B）** 用に予約し、ここでは配線しません。
+
+## SPI LCD + EC11 module / SPI LCD + EC11 モジュール
+
+The 2-inch SPI LCD (display option B) is sometimes sold as a **single physical
+module that already integrates an EC11 encoder**. In this atopile scaffold, the
+display pins (`bench_display_spi_lcd`) and the encoder pins (`bench_encoder`) are
+still kept as **separate logical interfaces**. This separation exists so the
+firmware can keep its **display driver** and **encoder scanner** independent — it
+does **not** imply the two are on separate physical boards.
+
+2-inch SPI LCD（表示オプション B）は、**EC11 エンコーダを内蔵した一体型モジュール**
+として販売されている場合があります。ただし、この atopile scaffold では display pins
+（`bench_display_spi_lcd`）と encoder pins（`bench_encoder`）を **別々の logical
+interface** として扱います。これは firmware 側で **display driver** と **encoder
+scanner** を分離するための整理であり、物理基板が別であることを意味しません。

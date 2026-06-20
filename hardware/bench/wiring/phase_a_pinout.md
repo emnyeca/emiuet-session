@@ -13,12 +13,27 @@ All signals are **3.3 V**. Teensy 4.1 GPIO is **not 5 V tolerant**.
 | Key Row 1 | 25 | output (scan) | |
 | Key Row 2 | 26 | output (scan) | |
 | Key Row 3 | 27 | output (scan) | |
-| Key Col 0 | 28 | input (read) | use internal pull-up / pull-down per firmware |
-| Key Col 1 | 29 | input (read) | |
-| Key Col 2 | 30 | input (read) | |
-| Key Col 3 | 31 | input (read) | |
+| Key Col 0 | 28 | input (`INPUT_PULLUP`) | reads LOW when a key in that column is pressed |
+| Key Col 1 | 29 | input (`INPUT_PULLUP`) | |
+| Key Col 2 | 30 | input (`INPUT_PULLUP`) | |
+| Key Col 3 | 31 | input (`INPUT_PULLUP`) | |
 
 16 keys = 4 rows × 4 columns, each key with one series diode (1N4148 or equiv.).
+
+### Scan policy (Phase A) / スキャン方針
+
+- Columns use **`INPUT_PULLUP`** (idle HIGH).
+- Rows are scanned **one row at a time, driven LOW**; all other rows stay inactive.
+- A pressed key is read on its **column as LOW** (active-low).
+- This assumption must stay consistent with the **diode direction** described in
+  [`../atopile/src/bench_key_matrix_4x4.ato`](../atopile/src/bench_key_matrix_4x4.ato)
+  (per-key `row -> switch -> diode (anode -> cathode) -> col`).
+
+- Columns は **`INPUT_PULLUP`**（待機時 HIGH）を使用します。
+- Rows は **1 行ずつ LOW に駆動** して scan します。
+- 押された key は **column 側で LOW** として読まれます（アクティブ LOW）。
+- この前提は [`../atopile/src/bench_key_matrix_4x4.ato`](../atopile/src/bench_key_matrix_4x4.ato)
+  に記述された **diode direction** と整合させてください。
 
 ## Rotary encoder (push) / ロータリーエンコーダ
 
