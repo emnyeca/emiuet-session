@@ -1,0 +1,57 @@
+# Top-level Phase A bench wiring for the Emiuet Session Teensy 4.1 development bench.
+#
+# Wiring intent only. No production assumptions, footprints, or PCB dimensions.
+# All signals are 3.3 V; Teensy 4.1 GPIO is NOT 5 V tolerant.
+#
+# Display option A (I2C OLED) and option B (SPI LCD) are ALTERNATIVES on the real
+# bench (one at a time). Both are wired here to capture the intent of each option.
+
+import Teensy41Header from "teensy41_header.ato"
+import BenchKeyMatrix4x4 from "bench_key_matrix_4x4.ato"
+import BenchEncoder from "bench_encoder.ato"
+import BenchDisplayI2cOled from "bench_display_i2c_oled.ato"
+import BenchDisplaySpiLcd from "bench_display_spi_lcd.ato"
+
+module EmiuetSessionBench:
+    teensy = new Teensy41Header
+    keys = new BenchKeyMatrix4x4
+    encoder = new BenchEncoder
+    oled = new BenchDisplayI2cOled
+    lcd = new BenchDisplaySpiLcd
+
+    # --- Key matrix rows (Teensy 24..27) ---
+    teensy.p24 ~ keys.row0
+    teensy.p25 ~ keys.row1
+    teensy.p26 ~ keys.row2
+    teensy.p27 ~ keys.row3
+
+    # --- Key matrix columns (Teensy 28..31) ---
+    teensy.p28 ~ keys.col0
+    teensy.p29 ~ keys.col1
+    teensy.p30 ~ keys.col2
+    teensy.p31 ~ keys.col3
+
+    # --- Rotary encoder (Teensy 36/37/38) ---
+    teensy.p36 ~ encoder.a
+    teensy.p37 ~ encoder.b
+    teensy.p38 ~ encoder.sw
+
+    # --- Display option A: I2C OLED (Teensy 18/19) ---
+    teensy.p18 ~ oled.i2c.sda
+    teensy.p19 ~ oled.i2c.scl
+
+    # --- Display option B: SPI LCD (Teensy 13/11/10/32/33/34) ---
+    teensy.p13 ~ lcd.spi.sck
+    teensy.p11 ~ lcd.spi.mosi
+    teensy.p10 ~ lcd.spi.cs
+    teensy.p32 ~ lcd.res
+    teensy.p33 ~ lcd.dc
+    teensy.p34 ~ lcd.blk
+
+    # --- Power: 3.3 V + GND to every peripheral ---
+    teensy.power ~ encoder.power
+    teensy.power ~ oled.power
+    teensy.power ~ lcd.power
+
+    # --- Reserved for Phase B TRS MIDI (Serial1, pins 0/1) ---
+    # teensy.p0 / teensy.p1 are intentionally left unconnected in Phase A.

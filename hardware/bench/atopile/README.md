@@ -1,0 +1,63 @@
+# atopile scaffold — Emiuet Session Teensy bench (Phase A)
+
+This is a **minimal, wiring-intent** atopile project for the Teensy 4.1 development
+bench. It captures *how the Phase A bench is wired* in a machine-readable form. It is
+**not** a production board and intentionally avoids footprints, part numbers, JLCPCB
+BOM/CPL, and final PCB dimensions.
+
+これは Teensy 4.1 開発ベンチの **配線意図を機械可読にした最小の** atopile プロジェクトです。
+量産基板ではなく、フットプリント・型番・JLCPCB BOM/CPL・最終 PCB 寸法は意図的に含めません。
+
+## How to build / ビルド方法
+
+```sh
+cd hardware/bench/atopile
+ato build
+```
+
+> `ato` (atopile) must be installed separately. See https://atopile.io for install
+> instructions. This scaffold was authored without a local `ato` install, so the
+> build has **not** been run here — see "Version note" below.
+>
+> `ato`（atopile）は別途インストールが必要です。このスキャフォールドはローカルに `ato` が
+> 無い状態で作成したため、ビルドは未実行です（下記「Version note」参照）。
+
+## Version note / バージョン注意
+
+atopile's `ato.yaml` schema and import syntax have changed across releases. If the
+build fails:
+
+1. Run `ato --version`.
+2. Compare [`ato.yaml`](ato.yaml) keys against your version's expected schema and
+   adjust if needed (e.g. `requires-atopile` vs `ato-version`, `builds.*.entry`).
+3. If imports fail, note that this scaffold uses the
+   `import <Name> from "<file>.ato"` form; adjust to your version's syntax if needed.
+
+These files deliberately stay minimal so they are easy to repair against whatever
+atopile version you have installed.
+
+## Structure / 構成
+
+| File | Responsibility |
+|---|---|
+| [`src/emiuet_session_bench.ato`](src/emiuet_session_bench.ato) | Top-level bench wiring (ties everything together) |
+| [`src/teensy41_header.ato`](src/teensy41_header.ato) | Generic Teensy 4.1 header / pin representation |
+| [`src/bench_key_matrix_4x4.ato`](src/bench_key_matrix_4x4.ato) | 4 rows × 4 cols, 16 switches, 16 diodes |
+| [`src/bench_encoder.ato`](src/bench_encoder.ato) | EC11-style encoder A / B / push |
+| [`src/bench_display_i2c_oled.ato`](src/bench_display_i2c_oled.ato) | 4-pin I2C OLED connector (option A) |
+| [`src/bench_display_spi_lcd.ato`](src/bench_display_spi_lcd.ato) | SPI LCD connector (option B) |
+| [`src/connectors.ato`](src/connectors.ato) | Generic interfaces and 2-terminal parts |
+| `layout/` | reserved for atopile layout output |
+
+## Design intent / 設計意図
+
+- The wiring layer carries **no performance-key semantics** (no note/voicing/chord
+  meaning). It only describes how pins, switches, diodes, and connectors join.
+- A future **Hall-effect input board should replace the scanner layer**, not the
+  performance logic. The `bench_key_matrix_4x4` module is the swappable scanner front
+  end; nothing downstream of it is encoded here.
+- Pins **0/1** are reserved for **TRS MIDI (Phase B)** and are not wired here.
+
+- 配線層には **演奏キーの意味を持たせません**（ノート/発音/コードの意味を含めない）。
+- 将来のホールエフェクト入力基板は **スキャナ層を置き換える** もので、演奏ロジックは置き換えません。
+- ピン **0/1** は **TRS MIDI（Phase B）** 用に予約し、ここでは配線しません。

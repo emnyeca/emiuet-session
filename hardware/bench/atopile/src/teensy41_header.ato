@@ -1,0 +1,50 @@
+# Generic Teensy 4.1 header / pin representation for the Phase A bench.
+#
+# This is NOT a real Teensy 4.1 footprint. It only exposes the signals used by the
+# Phase A bench so the top level can express wiring intent. All signals are 3.3 V;
+# Teensy 4.1 GPIO is NOT 5 V tolerant.
+
+import Power from "connectors.ato"
+
+module Teensy41Header:
+    # 3.3 V supply + ground.
+    power = new Power
+
+    # --- Key matrix rows (digital outputs, scan) ---
+    signal p24  # Key Row 0
+    signal p25  # Key Row 1
+    signal p26  # Key Row 2
+    signal p27  # Key Row 3
+
+    # --- Key matrix columns (digital inputs, read) ---
+    signal p28  # Key Col 0
+    signal p29  # Key Col 1
+    signal p30  # Key Col 2
+    signal p31  # Key Col 3
+
+    # --- Rotary encoder ---
+    signal p36  # Encoder A
+    signal p37  # Encoder B
+    signal p38  # Encoder push
+
+    # --- Display option A: I2C OLED ---
+    signal p18  # SDA
+    signal p19  # SCL
+
+    # --- Display option B: SPI LCD ---
+    signal p13  # SCK / SCL
+    signal p11  # MOSI / SDA
+    signal p10  # CS
+    signal p32  # RES
+    signal p33  # DC
+    signal p34  # BLK
+
+    # --- Reserved for Phase B TRS MIDI (Serial1) — DO NOT wire in Phase A ---
+    signal p0   # RX1 (MIDI IN, reserved)
+    signal p1   # TX1 (MIDI OUT, reserved)
+
+    # NOTE: onboard microSD and onboard USB (USB MIDI) are internal to the Teensy
+    # 4.1 and need no header wiring in Phase A.
+    #
+    # NOTE: Audio Shield critical pins (7, 8, 20, 21, 23) are intentionally NOT
+    # exposed here — Audio Shield is Phase D and must not be routed now.
