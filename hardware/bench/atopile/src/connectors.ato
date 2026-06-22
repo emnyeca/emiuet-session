@@ -1,0 +1,57 @@
+# Generic interfaces and 2-terminal parts for the Emiuet Session bench.
+#
+# These are intentionally generic (no footprints / part numbers) so the scaffold
+# stays robust across atopile versions and is easy to repair. They describe wiring
+# intent only.
+
+# --- Named interfaces -------------------------------------------------------
+
+interface Power:
+    # 3.3 V logic supply rail for the bench. Teensy 4.1 is 3.3 V only.
+    signal vcc
+    signal gnd
+
+# Named I2cBus (not "I2C") for the same reason as SpiBus below: avoid binding to
+# atopile's built-in I2C interface.
+interface I2cBus:
+    signal sda
+    signal scl
+
+# Named SpiBus (not "SPI") to avoid colliding with atopile's built-in SPI
+# interface, whose field names differ (sclk/miso/mosi). Using a distinct name
+# guarantees `new SpiBus` binds to this definition.
+interface SpiBus:
+    signal sck
+    signal mosi
+    signal cs
+
+interface UART:
+    # Reserved for Phase B TRS MIDI (Serial1). Not wired in Phase A.
+    signal tx
+    signal rx
+
+# --- Generic 2-terminal parts ----------------------------------------------
+
+module Switch:
+    # A momentary key switch (Phase A: tact switch; later: replaceable input).
+    signal p1
+    signal p2
+
+module Diode:
+    # Per-key anti-ghosting diode (e.g. 1N4148). Orientation: anode -> cathode.
+    signal anode
+    signal cathode
+
+# --- Logical groupings ------------------------------------------------------
+
+module BenchPowerRails:
+    # 3.3 V logic supply rails shared across the bench. Teensy 4.1 is 3.3 V only.
+    power = new Power
+
+module ReservedTrsMidiPins:
+    # Logical reservation placeholder for Serial1 pins 0/1 (TRS MIDI).
+    # Connecting p0/p1 here only makes the reservation visible in the wiring model.
+    # It adds NO TRS MIDI circuit, jack, optocoupler, transistor, or external MIDI
+    # wiring in Phase A. Physical TRS MIDI wiring remains Phase B.
+    signal rx  # Teensy pin 0 / RX1
+    signal tx  # Teensy pin 1 / TX1

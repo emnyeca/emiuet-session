@@ -1,0 +1,19 @@
+# atopile project for the Emiuet Session Teensy 4.1 development bench (Phase A).
+#
+# This is a WIRING-INTENT scaffold, not a production board:
+#   - no production footprints / part numbers are assumed
+#   - no JLCPCB BOM / CPL
+#   - no final PCB dimensions
+#   - no exact Teensy 4.1 footprint
+#
+# NOTE: the exact ato.yaml schema depends on your installed atopile version.
+# If `ato build` reports an unknown/missing key, run `ato --version` and adjust
+# the keys below to match your atopile release. See README.md in this folder.
+
+requires-atopile: ">=0.3.0"
+
+builds:
+  default:
+    entry: src/emiuet_session_bench.ato:EmiuetSessionBench
+
+dependencies: []

@@ -1,0 +1,12 @@
+# Display option B: 2-inch SPI LCD (+ EC11 module on the board), as a generic
+# connector. Wiring intent only.
+
+from "connectors.ato" import SpiBus
+from "connectors.ato" import Power
+
+module BenchDisplaySpiLcd:
+    spi = new SpiBus    # sck, mosi, cs
+    signal res       # reset
+    signal dc        # data/command
+    signal blk       # backlight enable
+    power = new Power

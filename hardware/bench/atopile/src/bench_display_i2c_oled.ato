@@ -1,0 +1,9 @@
+# Display option A: 128x64 I2C OLED, as a generic 4-pin connector.
+# Wiring intent only (SDA / SCL / VCC / GND).
+
+from "connectors.ato" import I2cBus
+from "connectors.ato" import Power
+
+module BenchDisplayI2cOled:
+    i2c = new I2cBus
+    power = new Power

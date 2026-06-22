@@ -1,0 +1,114 @@
+# 4x4 key matrix for the Phase A bench: 4 rows, 4 columns, 16 switches, 16 diodes.
+#
+# This is the SWAPPABLE SCANNER FRONT END. A future Hall-effect input board should
+# replace THIS module, not the performance logic. No performance-key semantics
+# (note / voicing / chord meaning) live here — this is wiring intent only.
+#
+# Per-key topology (anti-ghosting): row -> switch -> diode(anode->cathode) -> col.
+# Keep the diode orientation consistent with the firmware scan direction.
+
+from "connectors.ato" import Switch
+from "connectors.ato" import Diode
+
+module BenchKeyMatrix4x4:
+    # Rows (driven during scan) and columns (read during scan).
+    signal row0
+    signal row1
+    signal row2
+    signal row3
+    signal col0
+    signal col1
+    signal col2
+    signal col3
+
+    # 16 key switches.
+    sw0 = new Switch
+    sw1 = new Switch
+    sw2 = new Switch
+    sw3 = new Switch
+    sw4 = new Switch
+    sw5 = new Switch
+    sw6 = new Switch
+    sw7 = new Switch
+    sw8 = new Switch
+    sw9 = new Switch
+    sw10 = new Switch
+    sw11 = new Switch
+    sw12 = new Switch
+    sw13 = new Switch
+    sw14 = new Switch
+    sw15 = new Switch
+
+    # 16 anti-ghosting diodes (one per key).
+    d0 = new Diode
+    d1 = new Diode
+    d2 = new Diode
+    d3 = new Diode
+    d4 = new Diode
+    d5 = new Diode
+    d6 = new Diode
+    d7 = new Diode
+    d8 = new Diode
+    d9 = new Diode
+    d10 = new Diode
+    d11 = new Diode
+    d12 = new Diode
+    d13 = new Diode
+    d14 = new Diode
+    d15 = new Diode
+
+    # --- Row 0 ---
+    row0 ~ sw0.p1
+    sw0.p2 ~ d0.anode
+    d0.cathode ~ col0
+    row0 ~ sw1.p1
+    sw1.p2 ~ d1.anode
+    d1.cathode ~ col1
+    row0 ~ sw2.p1
+    sw2.p2 ~ d2.anode
+    d2.cathode ~ col2
+    row0 ~ sw3.p1
+    sw3.p2 ~ d3.anode
+    d3.cathode ~ col3
+
+    # --- Row 1 ---
+    row1 ~ sw4.p1
+    sw4.p2 ~ d4.anode
+    d4.cathode ~ col0
+    row1 ~ sw5.p1
+    sw5.p2 ~ d5.anode
+    d5.cathode ~ col1
+    row1 ~ sw6.p1
+    sw6.p2 ~ d6.anode
+    d6.cathode ~ col2
+    row1 ~ sw7.p1
+    sw7.p2 ~ d7.anode
+    d7.cathode ~ col3
+
+    # --- Row 2 ---
+    row2 ~ sw8.p1
+    sw8.p2 ~ d8.anode
+    d8.cathode ~ col0
+    row2 ~ sw9.p1
+    sw9.p2 ~ d9.anode
+    d9.cathode ~ col1
+    row2 ~ sw10.p1
+    sw10.p2 ~ d10.anode
+    d10.cathode ~ col2
+    row2 ~ sw11.p1
+    sw11.p2 ~ d11.anode
+    d11.cathode ~ col3
+
+    # --- Row 3 ---
+    row3 ~ sw12.p1
+    sw12.p2 ~ d12.anode
+    d12.cathode ~ col0
+    row3 ~ sw13.p1
+    sw13.p2 ~ d13.anode
+    d13.cathode ~ col1
+    row3 ~ sw14.p1
+    sw14.p2 ~ d14.anode
+    d14.cathode ~ col2
+    row3 ~ sw15.p1
+    sw15.p2 ~ d15.anode
+    d15.cathode ~ col3
